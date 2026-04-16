@@ -1,0 +1,510 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Occupancy Model Report",
+    "section": "",
+    "text": "1 Occupancy Model Report",
+    "crumbs": [
+      "<span class='chapter-number'>1</span>  <span class='chapter-title'>Occupancy Model Report</span>"
+    ]
+  },
+  {
+    "objectID": "index.html#overview",
+    "href": "index.html#overview",
+    "title": "Occupancy Model Report",
+    "section": "1.1 Overview",
+    "text": "1.1 Overview\nAn occupancy model with detection and temporal structure can be written as:\n\\[\ny_{i,r} \\mid z_i \\sim \\text{Bernoulli}(p_{i,r} \\cdot z_i)\n\\]\n\\[\nz_i \\sim \\text{Bernoulli}(\\psi_i)\n\\]\n\\[\n\\text{logit}(p_{i,r}) = \\alpha_0 + \\alpha_1 \\cdot \\text{lureDays}_{i,r} + s(\\text{JD}_{i,r})\n\\]\n\\[\n\\text{logit}(\\psi_i) = \\beta_0 + \\sum_{k} \\beta_k \\cdot X_{i,k}\n\\]\nwhere the occupancy covariates include:\n\\[\nX_{i,k} \\in \\{\\text{year effects},\\; \\text{environmental covariates on occupancy}\\}\n\\]\n\n1.1.1 Temporal random effect\nThe detection model includes a smooth seasonal random effect with a snow-dependent interaction:\n\\[\ns(\\text{JD}_{i,r}) = \\mu_{\\text{base}}(\\text{JD}_{i,r}) + \\text{snow}_i \\cdot \\mu_{\\text{snow}}(\\text{JD}_{i,r})\n\\]\nwhere each component is represented using spline basis functions:\n\\[\n\\mu_{\\text{base}}(\\text{JD}) = \\sum_{j=1}^{K} \\gamma_j \\, B_j(\\text{JD})\n\\]\n\\[\n\\mu_{\\text{snow}}(\\text{JD}) = \\sum_{j=1}^{K} \\delta_j \\, B_j(\\text{JD})\n\\]\nwith coefficients:\n\\[\n\\gamma_j \\sim \\mathcal{N}(0, \\sigma_{\\text{base}}^2), \\quad \\delta_j \\sim \\mathcal{N}(0, \\sigma_{\\text{snow}}^2)\n\\]\nwhere:\n\n\\(B_j(\\cdot)\\) are spline basis functions (e.g., B-splines)\n\n\\(\\mu_{\\text{base}}(\\text{JD})\\) represents the baseline seasonal detection pattern\n\n\\(\\mu_{\\text{snow}}(\\text{JD})\\) represents how the effect of snow varies across the season\n\n\\(\\sigma_{\\text{base}}^2\\) and \\(\\sigma_{\\text{snow}}^2\\) control the smoothness of each component\n\nThe resulting random effect allows detection probability to vary smoothly over time while permitting the influence of snow depth to change across the seasonal cycle.\n\n\n1.1.2 Variable definitions\n\n\\(y_{i,r}\\): detection/non-detection at site \\(i\\), replicate \\(r\\)\n\n\\(z_i\\): latent occupancy state at site \\(i\\)\n\n\\(p_{i,r}\\): detection probability\n\n\\(\\psi_i\\): occupancy probability\n\n\n\n1.1.3 Interpretation\nThis is a hierarchical occupancy model with imperfect detection. Detection probability varies as a function of lure aging and a smooth seasonal effect, modeled using a spline-based random effect. Occupancy probability is modeled as a function of annual variation and environmental covariates, allowing flexible ecological inference.\n\n\n1.1.4 Base NIMBLE model code\n\n\n\n\n\n\nNoteBase occupancy model (NIMBLE)\n\n\n\n\n\ncode_base_cov_model_snow_spline_re_noncenter &lt;- nimbleCode({\n  ## fixed effects\n  for(l in 1:n.beta){\n    beta[l] ~ dnorm(0, sd = 1)\n  }\n\n  for(l in 1:n.alpha){\n    alpha[l] ~ dnorm(0, sd = 1)\n  }\n\n  ## base JD smooth: non-centered RW2\n  sd_beta ~ T(dnorm(0, sd = 1), 0, )\n  beta_spline_1 ~ dnorm(0, sd = 1)\n  beta_spline_2 ~ dnorm(0, sd = 1)\n\n  beta_spline[1] &lt;- beta_spline_1\n  beta_spline[2] &lt;- beta_spline_2\n\n  for(k in 3:K){\n    beta_spline_raw[k-2] ~ dnorm(0, sd = 1)\n    beta_spline[k] &lt;- 2 * beta_spline[k-1] - beta_spline[k-2] + sd_beta * beta_spline_raw[k-2]\n  }\n\n  ## snow-varying JD smooth: non-centered RW2\n  sd_beta_s ~ T(dnorm(0, sd = 1), 0, )\n  beta_snow_1 ~ dnorm(0, sd = 1)\n  beta_snow_2 ~ dnorm(0, sd = 1)\n\n  beta_snow[1] &lt;- beta_snow_1\n  beta_snow[2] &lt;- beta_snow_2\n\n  for(k in 3:K){\n    beta_snow_raw[k-2] ~ dnorm(0, sd = 1)\n    beta_snow[k] &lt;- 2 * beta_snow[k-1] - beta_snow[k-2] + sd_beta_s * beta_snow_raw[k-2]\n  }\n\n  ## random effect scale\n  sd_s ~ T(dnorm(0, sd = 1), 0, )\n\n  ## precompute smooths on JD grid\n  for(d in 1:n_jd){\n    mu_base[d] &lt;- inprod(B[d, 1:K], beta_spline[1:K])\n    mu_snow[d] &lt;- inprod(B[d, 1:K], beta_snow[1:K])\n  }\n\n  ## occupancy / detection model\n  for(j in 1:J) {\n    z[j] ~ dbern(psi[j])\n    logit(psi[j]) &lt;- (beta[1:n.beta] %*% x_occ[j, 1:n.beta])[1,1]\n\n    for(k in 1:nReps[j]) {\n      mu_s[rep_index[j,k]] &lt;-\n        mu_base[jd_index[rep_index[j,k]]] +\n        jd_snow_season[jd_index[rep_index[j,k]]] *\n        (snow[j] * mu_snow[jd_index[rep_index[j,k]]])\n\n      eps[rep_index[j,k]] ~ dnorm(0, 1)\n      s[rep_index[j,k]] &lt;- mu_s[rep_index[j,k]] + sd_s * eps[rep_index[j,k]]\n\n      p_eff[rep_index[j, k]] &lt;- z[j] * p[rep_index[j, k]]\n      y[rep_index[j, k]] ~ dbern(p_eff[rep_index[j, k]])\n\n      logit(p[rep_index[j, k]]) &lt;-\n        (alpha[1:n.alpha] %*% x_det[rep_index[j, k], 1:n.alpha])[1,1] +\n        s[rep_index[j, k]]\n    }\n  }\n})\n\n\n\n\n\n1.1.5 Reversible-jump NIMBLE model code\n\n\n\n\n\n\nNoteReversible-jump occupancy model (NIMBLE)\n\n\n\n\n\ncode_base_rev_re_spline &lt;- nimbleCode({\n  ## priors for occupancy coefficients\n  for(l in 1:n.beta){\n    beta[l] ~ dnorm(0, 0.1)\n  }\n\n  beta.psi.indicator ~ dbeta(1, 1)\n  for(l in 1:n.beta.rev){\n    beta.switch[l] ~ dbern(beta.psi.indicator)\n    beta.indicator[l] &lt;- beta.switch[l] * beta[l + n.beta.no]\n  }\n\n  ## priors for detection coefficients\n  for(l in 1:n.alpha){\n    alpha[l] ~ dnorm(0, 0.1)\n  }\n\n  alpha.psi.indicator ~ dbeta(1, 1)\n\n  ## combine intercept and detection covariates in one matrix\n  alpha.indicator[1] &lt;- alpha[1]\n  if(n.alpha == 2){\n    alpha.switch ~ dbern(alpha.psi.indicator)\n    alpha.indicator[2] &lt;- alpha.switch * alpha[2]\n  } else {\n    for(l in 2:n.alpha){\n      alpha.switch[l-1] ~ dbern(alpha.psi.indicator)\n      alpha.indicator[l] &lt;- alpha.switch[l-1] * alpha[l]\n    }\n  }\n\n  ## base JD smooth: RW2 prior on beta_spline[1:K]\n  beta_spline[1] ~ dnorm(0, sd = 1)\n  beta_spline[2] ~ dnorm(0, sd = 1)\n  for(k in 3:K){\n    mu_k[k-2] &lt;- 2 * beta_spline[k-1] - beta_spline[k-2]\n    beta_spline[k] ~ dnorm(mu_k[k-2], tau_beta)\n  }\n  sd_beta ~ dunif(0, 2)\n  tau_beta &lt;- 1 / (sd_beta * sd_beta)\n\n  ## snow-varying JD smooth: RW2 prior on beta_snow[1:K]\n  beta_snow[1] ~ dnorm(0, sd = 1)\n  beta_snow[2] ~ dnorm(0, sd = 1)\n  for(k in 3:K){\n    mu_k_s[k-2] &lt;- 2 * beta_snow[k-1] - beta_snow[k-2]\n    beta_snow[k] ~ dnorm(mu_k_s[k-2], tau_beta_s)\n  }\n  sd_beta_s ~ dunif(0, 2)\n  tau_beta_s &lt;- 1 / (sd_beta_s * sd_beta_s)\n\n  ## random effect scale\n  sd_s ~ dunif(0, 2)\n\n  ## precompute smooths on JD grid\n  for(d in 1:n_jd){\n    mu_base[d] &lt;- inprod(B[d, 1:K], beta_spline[1:K])\n    mu_snow[d] &lt;- inprod(B[d, 1:K], beta_snow[1:K])\n  }\n\n  ## occupancy / detection model\n  for(j in 1:J) {\n    z[j] ~ dbern(psi[j])\n    logit(psi[j]) &lt;-\n      (beta[1:n.beta.no] %*% x_occ_no[j, 1:n.beta.no])[1,1] +\n      (beta.indicator[1:n.beta.rev] %*% x_occ_rev[j, 1:n.beta.rev])[1,1]\n\n    for(k in 1:nReps[j]) {\n      mu_s[rep_index[j,k]] &lt;-\n        mu_base[jd_index[rep_index[j,k]]] +\n        jd_snow_season[jd_index[rep_index[j,k]]] *\n        (snow[j] * mu_snow[jd_index[rep_index[j,k]]])\n\n      eps[rep_index[j,k]] ~ dnorm(0, 1)\n      s[rep_index[j,k]] &lt;- mu_s[rep_index[j,k]] + sd_s * eps[rep_index[j,k]]\n\n      p_eff[rep_index[j, k]] &lt;- z[j] * p[rep_index[j, k]]\n      y[rep_index[j, k]] ~ dbern(p_eff[rep_index[j, k]])\n\n      logit(p[rep_index[j, k]]) &lt;-\n        (alpha.indicator[1:n.alpha] %*% x_det[rep_index[j, k], 1:n.alpha])[1,1] +\n        s[rep_index[j,k]]\n    }\n  }\n})\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nspecies\ndescription\nanalysis_id\nanalysis_label\nreport_version\nyear_min\nyear_max\nn_years\nn_sites\nn_reps\nn_detections\nn_occ_fixed\nn_occ_rj\nn_det_fixed\nn_det_rj\nn_post_total\nn_burn\nchunk_size\nn_chunks\n\n\n\n\nRed Fox\nbase model plus spline snow random effect on detection, rev on alpha, beta,\nredfox_occ_2026\nRed fox occupancy workflow\nv0.2\n2018\n2024\n6\n193\n6346\n45\n6\n11\n1\n1\n150000\n10000\n10000\n15",
+    "crumbs": [
+      "<span class='chapter-number'>1</span>  <span class='chapter-title'>Occupancy Model Report</span>"
+    ]
+  },
+  {
+    "objectID": "index.html#explicit-fitted-models",
+    "href": "index.html#explicit-fitted-models",
+    "title": "Occupancy Model Report",
+    "section": "1.2 Explicit fitted models",
+    "text": "1.2 Explicit fitted models\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nrun_id\nphase_source\nsource_model_id\nsource_model_id_compact\nsource_id_type\nfit_model_id\nlabel\nformula_label\nfit_status\nconverged\nmax_rhat\nmin_ess\nwaic\nhas_traceplots\nhas_residuals\nhas_spatial_ac\nhas_temporal_ac\n\n\n\n\neval_base_rj_100000000000_100000000000\nbase_rj\n100000000000\n100000000000\nbase_rj\n100000000000\ndet: lureDays | occ: intercept/year only\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024\nok\nFALSE\n1.161\n173.794\n375.086\nFALSE\nFALSE\nFALSE\nFALSE\n\n\neval_sq_rj_NA_100000000020\nsq_rj\nNA\nNA\nsq_rj\n100000000020\ndet: lureDays | occ: aso_snow_depth + aso_snow_depth_sq\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + aso_snow_depth + aso_snow_depth_sq\nok\nTRUE\n1.032\n251.814\n377.045\nFALSE\nFALSE\nFALSE\nFALSE\n\n\neval_sq_rj_NA_100010000020\nsq_rj\nNA\nNA\nsq_rj\n100010000020\ndet: lureDays | occ: elev_m + aso_snow_depth + aso_snow_depth_sq\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + elev_m + aso_snow_depth + aso_snow_depth_sq\nok\nFALSE\n1.180\n200.195\n378.563\nFALSE\nFALSE\nFALSE\nFALSE\n\n\neval_base_rj_NA_100010000000\nbase_rj\nNA\nNA\nbase_rj\n100010000000\ndet: lureDays | occ: elev_m\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + elev_m\nok\nTRUE\n1.058\n227.184\n378.007\nFALSE\nFALSE\nFALSE\nFALSE",
+    "crumbs": [
+      "<span class='chapter-number'>1</span>  <span class='chapter-title'>Occupancy Model Report</span>"
+    ]
+  },
+  {
+    "objectID": "01_data_summary.html",
+    "href": "01_data_summary.html",
+    "title": "2  Data Summary",
+    "section": "",
+    "text": "2.1 Overview\nspecies\ndescription\nanalysis_id\nanalysis_label\nreport_version\nyear_min\nyear_max\nn_years\nn_sites\nn_reps\nn_detections\nn_occ_fixed\nn_occ_rj\nn_det_fixed\nn_det_rj\nn_post_total\nn_burn\nchunk_size\nn_chunks\n\n\n\n\nRed Fox\nbase model plus spline snow random effect on detection, rev on alpha, beta,\nredfox_occ_2026\nRed fox occupancy workflow\nv0.2\n2018\n2024\n6\n193\n6346\n45\n6\n11\n1\n1\n150000\n10000\n10000\n15",
+    "crumbs": [
+      "<span class='chapter-number'>2</span>  <span class='chapter-title'>Data Summary</span>"
+    ]
+  },
+  {
+    "objectID": "01_data_summary.html#covariates",
+    "href": "01_data_summary.html#covariates",
+    "title": "2  Data Summary",
+    "section": "2.2 Covariates",
+    "text": "2.2 Covariates\n\n\n\n\n\n\n\n\n\n\n\n\ncomponent\ncov\ncenter\nscale\ncentered_scaled\n\n\n\n\noccupancy_fixed\nbeta.int\nNA\nNA\nFALSE\n\n\noccupancy_fixed\nyr2019\nNA\nNA\nFALSE\n\n\noccupancy_fixed\nyr2021\nNA\nNA\nFALSE\n\n\noccupancy_fixed\nyr2022\nNA\nNA\nFALSE\n\n\noccupancy_fixed\nyr2023\nNA\nNA\nFALSE\n\n\noccupancy_fixed\nyr2024\nNA\nNA\nFALSE\n\n\noccupancy_rj\nbar\nNA\nNA\nFALSE\n\n\noccupancy_rj\nheb\nNA\nNA\nFALSE\n\n\noccupancy_rj\ntree\nNA\nNA\nFALSE\n\n\noccupancy_rj\nelev_m\n3527.648\n233.586\nTRUE\n\n\noccupancy_rj\neastness\n-0.161\n0.677\nTRUE\n\n\noccupancy_rj\nnorthness\n0.039\n0.721\nTRUE\n\n\noccupancy_rj\nslope\n15.856\n9.209\nTRUE\n\n\noccupancy_rj\ntreeDist\n567.847\n633.633\nTRUE\n\n\noccupancy_rj\ntpi_25\n29.744\n34.170\nTRUE\n\n\noccupancy_rj\naso_snow_depth\n2.219\n1.487\nTRUE\n\n\noccupancy_rj\nevi_short_int\n23058.242\n23897.175\nTRUE\n\n\ndetection_fixed\nalpha_int\nNA\nNA\nFALSE\n\n\ndetection_rj\nlureDays\n91.847\n76.468\nTRUE",
+    "crumbs": [
+      "<span class='chapter-number'>2</span>  <span class='chapter-title'>Data Summary</span>"
+    ]
+  },
+  {
+    "objectID": "01_data_summary.html#capture-summary",
+    "href": "01_data_summary.html#capture-summary",
+    "title": "2  Data Summary",
+    "section": "2.3 Capture Summary",
+    "text": "2.3 Capture Summary\n\n\n\n\n\nyear\nn_obs\ndetections\ndetection_rate\n\n\n\n\n2018\n668\n13\n0.019\n\n\n2019\n878\n3\n0.003\n\n\n2021\n1248\n1\n0.001\n\n\n2022\n1406\n5\n0.004\n\n\n2023\n959\n7\n0.007\n\n\n2024\n1187\n20\n0.017",
+    "crumbs": [
+      "<span class='chapter-number'>2</span>  <span class='chapter-title'>Data Summary</span>"
+    ]
+  },
+  {
+    "objectID": "02a_base_rj_screening.html",
+    "href": "02a_base_rj_screening.html",
+    "title": "3  Base RJ Screening",
+    "section": "",
+    "text": "3.1 Inclusion Probabilities\nmean\nparameter\ncov\nab\nf.top\nlin_est\nn_models\n\n\n\n\n0.637\nalpha.switch\nlureDays\nalpha\n1.000\n-0.339\n1458\n\n\n0.418\nbeta.switch[10]\naso_snow_depth\nbeta\n0.655\n-0.484\n881\n\n\n0.385\nbeta.switch[4]\nelev_m\nbeta\n0.604\n0.527\n814\n\n\n0.176\nbeta.switch[7]\nslope\nbeta\n0.276\n-0.149\n830\n\n\n0.168\nbeta.switch[1]\nbar\nbeta\n0.263\n0.197\n764\n\n\n0.163\nbeta.switch[2]\nheb\nbeta\n0.255\n-0.216\n774\n\n\n0.137\nbeta.switch[5]\neastness\nbeta\n0.215\n0.101\n773\n\n\n0.130\nbeta.switch[3]\ntree\nbeta\n0.204\n-0.048\n753\n\n\n0.103\nbeta.switch[8]\ntreeDist\nbeta\n0.162\n0.051\n701\n\n\n0.049\nbeta.switch[9]\ntpi_25\nbeta\n0.076\n0.004\n662\n\n\n0.045\nbeta.switch[11]\nevi_short_int\nbeta\n0.070\n-0.007\n653\n\n\n0.040\nbeta.switch[6]\nnorthness\nbeta\n0.062\n-0.004\n648",
+    "crumbs": [
+      "<span class='chapter-number'>3</span>  <span class='chapter-title'>Base RJ Screening</span>"
+    ]
+  },
+  {
+    "objectID": "02a_base_rj_screening.html#top-models",
+    "href": "02a_base_rj_screening.html#top-models",
+    "title": "3  Base RJ Screening",
+    "section": "3.2 Top Models",
+    "text": "3.2 Top Models\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nmodel_id\nFreq\nposterior\nBF_to_top\nmodel\nrank_posterior\nwaic\nwaic_diff\nwaic_joint_var\nwaic_z_score\n\n\n\n\n100000000000\n16965\n0.113\n1.000\nlureDays\n1\n381.365\n4.331\n9.854\n0.439\n\n\n000000000000\n16217\n0.108\n1.046\n\n2\n377.034\n0.000\n0.000\n0.000\n\n\n100010000000\n11081\n0.074\n1.531\nlureDays + elev_m\n3\n388.678\n11.644\n9.868\n1.180\n\n\n100000000010\n9701\n0.065\n1.749\nlureDays + aso_snow_depth\n4\n385.538\n8.504\n9.913\n0.858\n\n\n000000000010\n6002\n0.040\n2.827\naso_snow_depth\n5\n381.417\n4.383\n9.695\n0.452\n\n\n100010000010\n5327\n0.036\n3.185\nlureDays + elev_m + aso_snow_depth\n6\n389.471\n12.437\n9.849\n1.263\n\n\n000010000000\n4447\n0.030\n3.815\nelev_m\n7\n380.221\n3.186\n9.622\n0.331\n\n\n110000000000\n1901\n0.013\n8.924\nlureDays + bar\n8\n383.444\n6.410\n9.906\n0.647\n\n\n110000000010\n1758\n0.012\n9.650\nlureDays + bar + aso_snow_depth\n9\n386.210\n9.176\n9.971\n0.920\n\n\n100010010000\n1731\n0.012\n9.801\nlureDays + elev_m + slope\n10\n388.337\n11.302\n9.872\n1.145\n\n\n010000000000\n1635\n0.011\n10.376\nbar\n11\n377.725\n0.691\n9.697\n0.071\n\n\n100000001010\n1407\n0.009\n12.058\nlureDays + treeDist + aso_snow_depth\n12\n386.042\n9.007\n9.944\n0.906\n\n\n100000001000\n1403\n0.009\n12.092\nlureDays + treeDist\n13\n381.267\n4.233\n9.825\n0.431\n\n\n101000000010\n1314\n0.009\n12.911\nlureDays + heb + aso_snow_depth\n14\n384.941\n7.906\n9.896\n0.799\n\n\n000010000010\n1270\n0.008\n13.358\nelev_m + aso_snow_depth\n15\n384.128\n7.093\n9.685\n0.732\n\n\n101010000000\n1168\n0.008\n14.525\nlureDays + heb + elev_m\n16\n389.316\n12.281\n9.828\n1.250\n\n\n100010010010\n1161\n0.008\n14.612\nlureDays + elev_m + slope + aso_snow_depth\n17\n390.539\n13.505\n9.770\n1.382\n\n\n101000000000\n1131\n0.008\n15.000\nlureDays + heb\n18\n382.143\n5.109\n9.878\n0.517\n\n\n000000001000\n1098\n0.007\n15.451\ntreeDist\n19\n378.984\n1.949\n9.653\n0.202\n\n\n001000000000\n1042\n0.007\n16.281\nheb\n20\n377.163\n0.129\n9.763\n0.013",
+    "crumbs": [
+      "<span class='chapter-number'>3</span>  <span class='chapter-title'>Base RJ Screening</span>"
+    ]
+  },
+  {
+    "objectID": "02a_base_rj_screening.html#cumulative-posterior-mass",
+    "href": "02a_base_rj_screening.html#cumulative-posterior-mass",
+    "title": "3  Base RJ Screening",
+    "section": "3.3 Cumulative Posterior Mass",
+    "text": "3.3 Cumulative Posterior Mass",
+    "crumbs": [
+      "<span class='chapter-number'>3</span>  <span class='chapter-title'>Base RJ Screening</span>"
+    ]
+  },
+  {
+    "objectID": "02a_base_rj_screening.html#waic-competition",
+    "href": "02a_base_rj_screening.html#waic-competition",
+    "title": "3  Base RJ Screening",
+    "section": "3.4 WAIC Competition",
+    "text": "3.4 WAIC Competition\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nmodel_id\nFreq\nposterior\nBF_to_top\nmodel\nrank_posterior\nwaic\nwaic_diff\nwaic_joint_var\nwaic_z_score\nwaic_se\nwaic_z\ncompetitive\n\n\n\n\n000000000000\n16217\n0.108\n1.046\n\n2\n377.034\n0.000\n0.000\n0.000\n0.000\nNaN\nNA\n\n\n001000000000\n1042\n0.007\n16.281\nheb\n20\n377.163\n0.129\n9.763\n0.013\n3.125\n0.041\nTRUE\n\n\n010000000000\n1635\n0.011\n10.376\nbar\n11\n377.725\n0.691\n9.697\n0.071\n3.114\n0.222\nTRUE\n\n\n000000001000\n1098\n0.007\n15.451\ntreeDist\n19\n378.984\n1.949\n9.653\n0.202\n3.107\n0.627\nTRUE\n\n\n000010000000\n4447\n0.030\n3.815\nelev_m\n7\n380.221\n3.186\n9.622\n0.331\n3.102\n1.027\nFALSE\n\n\n100000001000\n1403\n0.009\n12.092\nlureDays + treeDist\n13\n381.267\n4.233\n9.825\n0.431\n3.135\n1.350\nFALSE\n\n\n100000000000\n16965\n0.113\n1.000\nlureDays\n1\n381.365\n4.331\n9.854\n0.439\n3.139\n1.380\nFALSE\n\n\n000000000010\n6002\n0.040\n2.827\naso_snow_depth\n5\n381.417\n4.383\n9.695\n0.452\n3.114\n1.408\nFALSE\n\n\n101000000000\n1131\n0.008\n15.000\nlureDays + heb\n18\n382.143\n5.109\n9.878\n0.517\n3.143\n1.625\nFALSE\n\n\n110000000000\n1901\n0.013\n8.924\nlureDays + bar\n8\n383.444\n6.410\n9.906\n0.647\n3.147\n2.037\nFALSE\n\n\n000010000010\n1270\n0.008\n13.358\nelev_m + aso_snow_depth\n15\n384.128\n7.093\n9.685\n0.732\n3.112\n2.279\nFALSE\n\n\n101000000010\n1314\n0.009\n12.911\nlureDays + heb + aso_snow_depth\n14\n384.941\n7.906\n9.896\n0.799\n3.146\n2.513\nFALSE\n\n\n100000000010\n9701\n0.065\n1.749\nlureDays + aso_snow_depth\n4\n385.538\n8.504\n9.913\n0.858\n3.149\n2.701\nFALSE\n\n\n100000001010\n1407\n0.009\n12.058\nlureDays + treeDist + aso_snow_depth\n12\n386.042\n9.007\n9.944\n0.906\n3.153\n2.856\nFALSE\n\n\n110000000010\n1758\n0.012\n9.650\nlureDays + bar + aso_snow_depth\n9\n386.210\n9.176\n9.971\n0.920\n3.158\n2.906\nFALSE\n\n\n100010010000\n1731\n0.012\n9.801\nlureDays + elev_m + slope\n10\n388.337\n11.302\n9.872\n1.145\n3.142\n3.597\nFALSE\n\n\n100010000000\n11081\n0.074\n1.531\nlureDays + elev_m\n3\n388.678\n11.644\n9.868\n1.180\n3.141\n3.707\nFALSE\n\n\n101010000000\n1168\n0.008\n14.525\nlureDays + heb + elev_m\n16\n389.316\n12.281\n9.828\n1.250\n3.135\n3.918\nFALSE\n\n\n100010000010\n5327\n0.036\n3.185\nlureDays + elev_m + aso_snow_depth\n6\n389.471\n12.437\n9.849\n1.263\n3.138\n3.963\nFALSE\n\n\n100010010010\n1161\n0.008\n14.612\nlureDays + elev_m + slope + aso_snow_depth\n17\n390.539\n13.505\n9.770\n1.382\n3.126\n4.321\nFALSE",
+    "crumbs": [
+      "<span class='chapter-number'>3</span>  <span class='chapter-title'>Base RJ Screening</span>"
+    ]
+  },
+  {
+    "objectID": "02a_base_rj_screening.html#top-model-support-by-chunk",
+    "href": "02a_base_rj_screening.html#top-model-support-by-chunk",
+    "title": "3  Base RJ Screening",
+    "section": "3.5 Top-Model Support by Chunk",
+    "text": "3.5 Top-Model Support by Chunk",
+    "crumbs": [
+      "<span class='chapter-number'>3</span>  <span class='chapter-title'>Base RJ Screening</span>"
+    ]
+  },
+  {
+    "objectID": "02a_base_rj_screening.html#rope-summary",
+    "href": "02a_base_rj_screening.html#rope-summary",
+    "title": "3  Base RJ Screening",
+    "section": "3.6 ROPE Summary",
+    "text": "3.6 ROPE Summary\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ncov\nincl_prob\nf.top\nlin_est\nn_models\npost_mass\nrope_weighted\nrope_unweighted\nrope_sd\npct_models_rope_lt_0025\npct_models_rope_lt_0100\npct_models_rope_gt_0975\npostmass_rope_lt_0025\npostmass_rope_lt_0100\npostmass_rope_gt_0975\nest_weighted\nest_unweighted\nest_sd\nest_q25\nest_q50\nest_q75\nest_low\nest_high\nn_eff_weighted\nn_eff_median\neffect_support_class\nn_models_inclusion\n\n\n\n\naso_snow_depth\n0.418\n0.655\n-0.484\n82\n48095\n0.017\n0.020\n0.014\n0.720\n1.000\n0\n0.853\n1.000\n0\n-1.123\n-1.118\n0.105\n-1.196\n-1.113\n-1.056\n-1.288\n-0.905\n738.503\n152.500\nstrong_against_rope\n881\n\n\nelev_m\n0.385\n0.604\n0.527\n78\n45155\n0.017\n0.023\n0.019\n0.615\n1.000\n0\n0.814\n1.000\n0\n1.311\n1.334\n0.219\n1.183\n1.318\n1.488\n0.920\n1.734\n579.971\n142.350\nstrong_against_rope\n814\n\n\nlureDays\n0.637\n1.000\n-0.339\n104\n81071\n0.046\n0.041\n0.018\n0.154\n0.990\n0\n0.071\n0.998\n0\n-0.524\n-0.533\n0.032\n-0.560\n-0.535\n-0.510\n-0.580\n-0.456\n1219.762\n190.936\nmoderate_against_rope\n1458\n\n\nslope\n0.176\n0.276\n-0.149\n50\n13347\n0.070\n0.064\n0.055\n0.200\n0.820\n0\n0.123\n0.838\n0\n-0.757\n-0.794\n0.196\n-0.916\n-0.814\n-0.680\n-1.136\n-0.396\n227.510\n90.019\nmoderate_against_rope\n830\n\n\nbar\n0.168\n0.263\n0.197\n47\n14562\n0.074\n0.078\n0.044\n0.085\n0.723\n0\n0.041\n0.784\n0\n1.184\n1.117\n0.518\n0.623\n1.183\n1.431\n0.356\n2.063\n99.746\n63.372\nmoderate_against_rope\n764",
+    "crumbs": [
+      "<span class='chapter-number'>3</span>  <span class='chapter-title'>Base RJ Screening</span>"
+    ]
+  },
+  {
+    "objectID": "02b_square_rj_refinement.html",
+    "href": "02b_square_rj_refinement.html",
+    "title": "4  Square RJ Refinement",
+    "section": "",
+    "text": "4.1 Grouped Inclusion Summary\ncomponent\nab\nbase_cov\nlinear_only_cov\nlinear_quad_cov\nsq_cov\nlinear_only_switch\nsq_switch\np_linear_only\np_quadratic\np_any_effect\npreferred_form\n\n\n\n\ndetection\nalpha\nlureDays\nlureDays\nlureDays\nlureDays_sq\nalpha.switch[1]\nalpha.switch_sq[1]\n0.363\n0.196\n0.363\nlinear_only\n\n\noccupancy\nbeta\naso_snow_depth\naso_snow_depth\naso_snow_depth\naso_snow_depth_sq\nbeta.switch[2]\nbeta.switch_sq[2]\n0.305\n0.378\n0.378\nquadratic\n\n\noccupancy\nbeta\nelev_m\nelev_m\nelev_m\nelev_m_sq\nbeta.switch[1]\nbeta.switch_sq[1]\n0.437\n0.186\n0.437\nlinear_only\n\n\noccupancy\nbeta\nslope\nslope\nslope\nslope_sq\nbeta.switch[3]\nbeta.switch_sq[3]\n0.199\n0.021\n0.199\nlinear_only",
+    "crumbs": [
+      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Square RJ Refinement</span>"
+    ]
+  },
+  {
+    "objectID": "02b_square_rj_refinement.html#square-term-map",
+    "href": "02b_square_rj_refinement.html#square-term-map",
+    "title": "4  Square RJ Refinement",
+    "section": "4.2 Square Term Map",
+    "text": "4.2 Square Term Map\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ncomponent\nab\nbase_cov\nlinear_only_cov\nlinear_only_coef\nlinear_only_switch\nlinear_quad_cov\nlinear_quad_coef\nsq_cov\nsq_coef\nsq_switch\n\n\n\n\ndetection\nalpha\nlureDays\nlureDays\nalpha_rev[1]\nalpha.switch[1]\nlureDays\nalpha_lin[1]\nlureDays_sq\nalpha_sq[1]\nalpha.switch_sq[1]\n\n\noccupancy\nbeta\naso_snow_depth\naso_snow_depth\nbeta_rev[2]\nbeta.switch[2]\naso_snow_depth\nbeta_lin[2]\naso_snow_depth_sq\nbeta_sq[2]\nbeta.switch_sq[2]\n\n\noccupancy\nbeta\nelev_m\nelev_m\nbeta_rev[1]\nbeta.switch[1]\nelev_m\nbeta_lin[1]\nelev_m_sq\nbeta_sq[1]\nbeta.switch_sq[1]\n\n\noccupancy\nbeta\nslope\nslope\nbeta_rev[3]\nbeta.switch[3]\nslope\nbeta_lin[3]\nslope_sq\nbeta_sq[3]\nbeta.switch_sq[3]",
+    "crumbs": [
+      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Square RJ Refinement</span>"
+    ]
+  },
+  {
+    "objectID": "02b_square_rj_refinement.html#top-models",
+    "href": "02b_square_rj_refinement.html#top-models",
+    "title": "4  Square RJ Refinement",
+    "section": "4.3 Top Models",
+    "text": "4.3 Top Models\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nmodel_id\nFreq\nposterior\nBF_to_top\nmodel\nrank_posterior\nwaic\nwaic_diff\nwaic_joint_var\nwaic_z_score\nmodel_id_compact\nhas_dummy_slots\n\n\n\n\n0x0x000000\n5783\n0.071\n1.000\n\n1\n376.250\n0.000\n0.000\n0.000\n00000000\nTRUE\n\n\n0x0x000010\n5300\n0.065\n1.091\naso_snow_depth_sq\n2\n380.532\n4.282\n9.509\n0.450\n00000010\nTRUE\n\n\n1x0x100010\n4248\n0.052\n1.361\nlureDays + elev_m + aso_snow_depth_sq\n3\n388.710\n12.460\n9.585\n1.300\n10100010\nTRUE\n\n\n0x0x010000\n4093\n0.050\n1.413\naso_snow_depth\n4\n380.341\n4.091\n9.459\n0.433\n00010000\nTRUE\n\n\n1x0x000010\n3124\n0.038\n1.851\nlureDays + aso_snow_depth_sq\n5\n385.976\n9.727\n9.726\n1.000\n10000010\nTRUE\n\n\n1x0x100000\n3109\n0.038\n1.860\nlureDays + elev_m\n6\n388.161\n11.911\n9.453\n1.260\n10100000\nTRUE\n\n\n0x0x100010\n3081\n0.038\n1.877\nelev_m + aso_snow_depth_sq\n7\n381.996\n5.747\n9.381\n0.613\n00100010\nTRUE\n\n\n1x0x010000\n3034\n0.037\n1.906\nlureDays + aso_snow_depth\n8\n385.067\n8.817\n9.606\n0.918\n10010000\nTRUE\n\n\n1x0x110000\n3018\n0.037\n1.916\nlureDays + elev_m + aso_snow_depth\n9\n389.278\n13.028\n9.502\n1.371\n10110000\nTRUE\n\n\n0x0x100000\n2898\n0.035\n1.996\nelev_m\n10\n380.268\n4.018\n9.408\n0.427\n00100000\nTRUE\n\n\n1x0x000000\n2704\n0.033\n2.139\nlureDays\n11\n379.467\n3.217\n9.561\n0.336\n10000000\nTRUE\n\n\n0x0x000100\n2609\n0.032\n2.217\nelev_m_sq\n12\n376.301\n0.051\n9.459\n0.005\n00000100\nTRUE\n\n\n0x1x100010\n2379\n0.029\n2.431\nlureDays_sq + elev_m + aso_snow_depth_sq\n13\n387.692\n11.443\n9.690\n1.181\n01100010\nTRUE\n\n\n0x1x110000\n2160\n0.026\n2.677\nlureDays_sq + elev_m + aso_snow_depth\n14\n387.043\n10.793\n9.704\n1.112\n01110000\nTRUE\n\n\n0x1x010000\n2104\n0.026\n2.749\nlureDays_sq + aso_snow_depth\n15\n380.845\n4.595\n9.480\n0.485\n01010000\nTRUE\n\n\n0x1x000010\n1809\n0.022\n3.197\nlureDays_sq + aso_snow_depth_sq\n16\n381.493\n5.243\n9.637\n0.544\n01000010\nTRUE\n\n\n0x0x110000\n1782\n0.022\n3.245\nelev_m + aso_snow_depth\n17\n384.797\n8.547\n9.450\n0.904\n00110000\nTRUE\n\n\n0x0x101010\n1718\n0.021\n3.366\nelev_m + slope + aso_snow_depth_sq\n18\n384.798\n8.548\n9.404\n0.909\n00101010\nTRUE\n\n\n0x0x000110\n1678\n0.020\n3.446\nelev_m_sq + aso_snow_depth_sq\n19\n380.597\n4.347\n9.629\n0.451\n00000110\nTRUE\n\n\n1x0x101010\n1613\n0.020\n3.585\nlureDays + elev_m + slope + aso_snow_depth_sq\n20\n389.016\n12.766\n9.501\n1.344\n10101010\nTRUE",
+    "crumbs": [
+      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Square RJ Refinement</span>"
+    ]
+  },
+  {
+    "objectID": "02b_square_rj_refinement.html#cumulative-posterior-mass",
+    "href": "02b_square_rj_refinement.html#cumulative-posterior-mass",
+    "title": "4  Square RJ Refinement",
+    "section": "4.4 Cumulative Posterior Mass",
+    "text": "4.4 Cumulative Posterior Mass",
+    "crumbs": [
+      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Square RJ Refinement</span>"
+    ]
+  },
+  {
+    "objectID": "02b_square_rj_refinement.html#waic-competition",
+    "href": "02b_square_rj_refinement.html#waic-competition",
+    "title": "4  Square RJ Refinement",
+    "section": "4.5 WAIC Competition",
+    "text": "4.5 WAIC Competition\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nmodel_id\nFreq\nposterior\nBF_to_top\nmodel\nrank_posterior\nwaic\nwaic_diff\nwaic_joint_var\nwaic_z_score\nmodel_id_compact\nhas_dummy_slots\nwaic_se\nwaic_z\ncompetitive\n\n\n\n\n0x0x000000\n5783\n0.071\n1.000\n\n1\n376.250\n0.000\n0.000\n0.000\n00000000\nTRUE\n0.000\nNaN\nNA\n\n\n0x0x000100\n2609\n0.032\n2.217\nelev_m_sq\n12\n376.301\n0.051\n9.459\n0.005\n00000100\nTRUE\n3.076\n0.017\nTRUE\n\n\n1x0x000000\n2704\n0.033\n2.139\nlureDays\n11\n379.467\n3.217\n9.561\n0.336\n10000000\nTRUE\n3.092\n1.040\nFALSE\n\n\n0x0x100000\n2898\n0.035\n1.996\nelev_m\n10\n380.268\n4.018\n9.408\n0.427\n00100000\nTRUE\n3.067\n1.310\nFALSE\n\n\n0x0x010000\n4093\n0.050\n1.413\naso_snow_depth\n4\n380.341\n4.091\n9.459\n0.433\n00010000\nTRUE\n3.075\n1.330\nFALSE\n\n\n0x0x000010\n5300\n0.065\n1.091\naso_snow_depth_sq\n2\n380.532\n4.282\n9.509\n0.450\n00000010\nTRUE\n3.084\n1.389\nFALSE\n\n\n0x0x000110\n1678\n0.020\n3.446\nelev_m_sq + aso_snow_depth_sq\n19\n380.597\n4.347\n9.629\n0.451\n00000110\nTRUE\n3.103\n1.401\nFALSE\n\n\n0x1x010000\n2104\n0.026\n2.749\nlureDays_sq + aso_snow_depth\n15\n380.845\n4.595\n9.480\n0.485\n01010000\nTRUE\n3.079\n1.492\nFALSE\n\n\n0x1x000010\n1809\n0.022\n3.197\nlureDays_sq + aso_snow_depth_sq\n16\n381.493\n5.243\n9.637\n0.544\n01000010\nTRUE\n3.104\n1.689\nFALSE\n\n\n0x0x100010\n3081\n0.038\n1.877\nelev_m + aso_snow_depth_sq\n7\n381.996\n5.747\n9.381\n0.613\n00100010\nTRUE\n3.063\n1.876\nFALSE\n\n\n0x0x110000\n1782\n0.022\n3.245\nelev_m + aso_snow_depth\n17\n384.797\n8.547\n9.450\n0.904\n00110000\nTRUE\n3.074\n2.780\nFALSE\n\n\n0x0x101010\n1718\n0.021\n3.366\nelev_m + slope + aso_snow_depth_sq\n18\n384.798\n8.548\n9.404\n0.909\n00101010\nTRUE\n3.067\n2.788\nFALSE\n\n\n1x0x010000\n3034\n0.037\n1.906\nlureDays + aso_snow_depth\n8\n385.067\n8.817\n9.606\n0.918\n10010000\nTRUE\n3.099\n2.845\nFALSE\n\n\n1x0x000010\n3124\n0.038\n1.851\nlureDays + aso_snow_depth_sq\n5\n385.976\n9.727\n9.726\n1.000\n10000010\nTRUE\n3.119\n3.119\nFALSE\n\n\n0x1x110000\n2160\n0.026\n2.677\nlureDays_sq + elev_m + aso_snow_depth\n14\n387.043\n10.793\n9.704\n1.112\n01110000\nTRUE\n3.115\n3.465\nFALSE\n\n\n0x1x100010\n2379\n0.029\n2.431\nlureDays_sq + elev_m + aso_snow_depth_sq\n13\n387.692\n11.443\n9.690\n1.181\n01100010\nTRUE\n3.113\n3.676\nFALSE\n\n\n1x0x100000\n3109\n0.038\n1.860\nlureDays + elev_m\n6\n388.161\n11.911\n9.453\n1.260\n10100000\nTRUE\n3.075\n3.874\nFALSE\n\n\n1x0x100010\n4248\n0.052\n1.361\nlureDays + elev_m + aso_snow_depth_sq\n3\n388.710\n12.460\n9.585\n1.300\n10100010\nTRUE\n3.096\n4.024\nFALSE\n\n\n1x0x101010\n1613\n0.020\n3.585\nlureDays + elev_m + slope + aso_snow_depth_sq\n20\n389.016\n12.766\n9.501\n1.344\n10101010\nTRUE\n3.082\n4.142\nFALSE\n\n\n1x0x110000\n3018\n0.037\n1.916\nlureDays + elev_m + aso_snow_depth\n9\n389.278\n13.028\n9.502\n1.371\n10110000\nTRUE\n3.083\n4.226\nFALSE",
+    "crumbs": [
+      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Square RJ Refinement</span>"
+    ]
+  },
+  {
+    "objectID": "02b_square_rj_refinement.html#rope-summary",
+    "href": "02b_square_rj_refinement.html#rope-summary",
+    "title": "4  Square RJ Refinement",
+    "section": "4.6 ROPE Summary",
+    "text": "4.6 ROPE Summary\n\n\n\n\n\nnote\n\n\n\n\nNo data available",
+    "crumbs": [
+      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Square RJ Refinement</span>"
+    ]
+  },
+  {
+    "objectID": "03_explicit_model_selection.html",
+    "href": "03_explicit_model_selection.html",
+    "title": "5  Explicit Model Selection",
+    "section": "",
+    "text": "5.1 Fitted model overview\nrun_id\nphase_source\nsource_model_id\nsource_model_id_compact\nsource_id_type\nfit_model_id\nlabel\nformula_label\nfit_status\nconverged\nmax_rhat\nmin_ess\nwaic\nhas_traceplots\nhas_residuals\nhas_spatial_ac\nhas_temporal_ac\n\n\n\n\neval_base_rj_100000000000_100000000000\nbase_rj\n100000000000\n100000000000\nbase_rj\n100000000000\ndet: lureDays | occ: intercept/year only\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024\nok\nFALSE\n1.161\n173.794\n375.086\nFALSE\nFALSE\nFALSE\nFALSE\n\n\neval_sq_rj_NA_100000000020\nsq_rj\nNA\nNA\nsq_rj\n100000000020\ndet: lureDays | occ: aso_snow_depth + aso_snow_depth_sq\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + aso_snow_depth + aso_snow_depth_sq\nok\nTRUE\n1.032\n251.814\n377.045\nFALSE\nFALSE\nFALSE\nFALSE\n\n\neval_sq_rj_NA_100010000020\nsq_rj\nNA\nNA\nsq_rj\n100010000020\ndet: lureDays | occ: elev_m + aso_snow_depth + aso_snow_depth_sq\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + elev_m + aso_snow_depth + aso_snow_depth_sq\nok\nFALSE\n1.180\n200.195\n378.563\nFALSE\nFALSE\nFALSE\nFALSE\n\n\neval_base_rj_NA_100010000000\nbase_rj\nNA\nNA\nbase_rj\n100010000000\ndet: lureDays | occ: elev_m\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + elev_m\nok\nTRUE\n1.058\n227.184\n378.007\nFALSE\nFALSE\nFALSE\nFALSE",
+    "crumbs": [
+      "<span class='chapter-number'>5</span>  <span class='chapter-title'>Explicit Model Selection</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_01_eval_base_rj_100000000000_100000000000.html",
+    "href": "06_model_01_eval_base_rj_100000000000_100000000000.html",
+    "title": "6  Model: eval_base_rj_100000000000_100000000000",
+    "section": "",
+    "text": "6.1 Overview\nfield\nvalue\n\n\n\n\nrun_id\neval_base_rj_100000000000_100000000000\n\n\nphase_source\nbase_rj\n\n\nsource_model_id\n100000000000\n\n\nsource_model_id_compact\n100000000000\n\n\nsource_id_type\nbase_rj\n\n\nfit_model_id\n100000000000\n\n\nfit_id_order\nlureDays , bar , heb , tree , elev_m , eastness , northness , slope , treeDist , tpi_25 , aso_snow_depth, evi_short_int\n\n\nlabel\ndet: lureDays | occ: intercept/year only\n\n\nformula_label\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024\n\n\ndescription\nred fox model 1, snow spline jdt re nc, det lure, occ dot (year only)\n\n\nspecies\nRed Fox\n\n\ndt_tm\n1775595923\n\n\nab_terms\nalpha_int + lureDays , beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024\n\n\nselected_covs\nlureDays\n\n\nselected_forms\nlinear\n\n\ndet_covs\nalpha_int, lureDays\n\n\nocc_covs\nbeta.int, yr2019 , yr2021 , yr2022 , yr2023 , yr2024\n\n\nfit_status\nok\n\n\nconverged\nFALSE\n\n\nn_post\n5000\n\n\nn_burn\n1000\n\n\nn_chains\n3\n\n\nwaic\n375.0863",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>6</span>  <span class='chapter-title'>Model: eval_base_rj_100000000000_100000000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_01_eval_base_rj_100000000000_100000000000.html#model-interpretation-guide",
+    "href": "06_model_01_eval_base_rj_100000000000_100000000000.html#model-interpretation-guide",
+    "title": "6  Model: eval_base_rj_100000000000_100000000000",
+    "section": "6.2 Model interpretation guide",
+    "text": "6.2 Model interpretation guide\n\n\n\n\n\n\nNoteROPE (region of practical equivalence)\n\n\n\nROPE is used to assess whether an estimated effect is practically distinguishable from zero. In this analysis, ROPE is applied to coefficients on scaled covariates, so values near zero correspond to negligible standardized effects.\np_rope represents the proportion of the full posterior distribution that lies within the ROPE.\nAs a decision guide:\n\np_rope ≥ 0.975: effect is likely not meaningfully different from zero (practically equivalent)\n\n0.025 &lt; p_rope &lt; 0.975: effect is ambiguous or weakly supported\n\np_rope ≤ 0.025: effect is likely meaningfully different from zero\n\nThese thresholds are interpretive guidelines and should be considered alongside uncertainty intervals and ecological context.\n\n6.2.1 Convergence (R̂)\nR̂ (Gelman–Rubin statistic) assesses MCMC convergence across chains. Values close to 1 indicate good mixing and convergence.\n\nR̂ ≈ 1.00: good convergence\n\nR̂ &gt; 1.01–1.05: potential convergence issues\n\n\n\n6.2.2 Derived quantities\n\np_dat: estimated detection probability summarized by year\n\npsi_dat: estimated occupancy probability summarized by year\n\nThese summaries provide an interpretable scale for model results and help link parameter estimates to ecological patterns over time.",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>6</span>  <span class='chapter-title'>Model: eval_base_rj_100000000000_100000000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_01_eval_base_rj_100000000000_100000000000.html#model-tables",
+    "href": "06_model_01_eval_base_rj_100000000000_100000000000.html#model-tables",
+    "title": "6  Model: eval_base_rj_100000000000_100000000000",
+    "section": "6.3 Model tables",
+    "text": "6.3 Model tables\n\nconvergence summaryestimatesrope summaryp_datpsi_dat\n\n\n\n\n\n\n\nparameter\nrhat\nrhat_upper\n\n\n\n\nsd_s\n1.161\n1.488\n\n\nalpha[1]\n1.059\n1.175\n\n\nbeta_snow[1]\n1.013\n1.046\n\n\nbeta_spline[7]\n1.011\n1.029\n\n\nbeta_spline[6]\n1.007\n1.021\n\n\nbeta_spline[3]\n1.006\n1.016\n\n\nbeta_spline[1]\n1.005\n1.014\n\n\nbeta_spline[5]\n1.005\n1.014\n\n\nbeta[2]\n1.004\n1.006\n\n\nbeta_spline[4]\n1.003\n1.005\n\n\nsd_beta\n1.003\n1.007\n\n\nbeta_spline[2]\n1.003\n1.009\n\n\nbeta_snow[5]\n1.002\n1.008\n\n\nbeta_snow[2]\n1.002\n1.003\n\n\nbeta_snow[4]\n1.002\n1.007\n\n\nbeta_snow[6]\n1.002\n1.006\n\n\nbeta[4]\n1.002\n1.007\n\n\nbeta[5]\n1.002\n1.005\n\n\nbeta_snow[3]\n1.002\n1.006\n\n\nalpha[2]\n1.002\n1.006\n\n\nsd_beta_s\n1.001\n1.004\n\n\nbeta_snow[7]\n1.001\n1.003\n\n\nbeta[3]\n1.001\n1.004\n\n\nbeta[6]\n1.001\n1.001\n\n\nbeta[1]\n1.000\n1.001\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ncomponent\ncov\nterm\nmean\nmedian\nmode\nlow\nhigh\nn\nn_eff\np_rope\nrope_range\nrhat\nrhat_upper\n\n\n\n\ndetection\nalpha_int\nalpha[1]\n-3.451\n-3.428\n-3.411\n-3.891\n-3.037\n15000\n292.428\n0.000\n0.18\n1.059\n1.175\n\n\ndetection\nlureDays\nalpha[2]\n-0.373\n-0.372\n-0.418\n-0.659\n-0.071\n15000\n1468.055\n0.144\n0.18\n1.002\n1.006\n\n\noccupancy\nbeta.int\nbeta[1]\n-1.316\n-1.312\n-1.331\n-1.904\n-0.676\n15000\n593.915\n0.002\n0.18\n1.000\n1.001\n\n\noccupancy\nyr2019\nbeta[2]\n-0.636\n-0.619\n-0.516\n-1.660\n0.287\n15000\n1481.565\n0.144\n0.18\n1.004\n1.006\n\n\noccupancy\nyr2021\nbeta[3]\n-1.013\n-1.005\n-0.969\n-2.033\n-0.117\n15000\n1156.963\n0.060\n0.18\n1.001\n1.004\n\n\noccupancy\nyr2022\nbeta[4]\n-0.833\n-0.833\n-0.730\n-1.833\n0.160\n15000\n1305.786\n0.100\n0.18\n1.002\n1.007\n\n\noccupancy\nyr2023\nbeta[5]\n-0.419\n-0.411\n-0.412\n-1.392\n0.482\n15000\n1170.789\n0.189\n0.18\n1.002\n1.005\n\n\noccupancy\nyr2024\nbeta[6]\n0.953\n0.933\n0.887\n0.003\n1.804\n15000\n883.854\n0.065\n0.18\n1.001\n1.001\n\n\noccupancy\nbeta_snow[1]\nbeta_snow[1]\n0.779\n0.775\n0.772\n-0.612\n2.115\n15000\n512.135\nNA\nNA\n1.013\n1.046\n\n\noccupancy\nbeta_snow[2]\nbeta_snow[2]\n-0.748\n-0.757\n-1.065\n-2.078\n0.592\n15000\n729.437\nNA\nNA\n1.002\n1.003\n\n\noccupancy\nbeta_snow[3]\nbeta_snow[3]\n-2.572\n-2.577\n-2.337\n-5.018\n-0.347\n15000\n714.542\nNA\nNA\n1.002\n1.006\n\n\noccupancy\nbeta_snow[4]\nbeta_snow[4]\n-4.562\n-4.528\n-4.433\n-7.908\n-1.147\n15000\n749.064\nNA\nNA\n1.002\n1.007\n\n\noccupancy\nbeta_snow[5]\nbeta_snow[5]\n-6.433\n-6.359\n-6.228\n-10.947\n-1.870\n15000\n802.428\nNA\nNA\n1.002\n1.008\n\n\noccupancy\nbeta_snow[6]\nbeta_snow[6]\n-8.076\n-7.973\n-7.673\n-14.326\n-2.072\n15000\n770.452\nNA\nNA\n1.002\n1.006\n\n\noccupancy\nbeta_snow[7]\nbeta_snow[7]\n-9.649\n-9.536\n-8.920\n-17.721\n-1.931\n15000\n767.601\nNA\nNA\n1.001\n1.003\n\n\noccupancy\nbeta_snow_1\nbeta_snow_1\n0.779\n0.775\n0.772\n-0.612\n2.115\n15000\n512.135\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_2\nbeta_snow_2\n-0.748\n-0.757\n-1.065\n-2.078\n0.592\n15000\n729.437\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[1]\nbeta_snow_raw[1]\n-0.316\n-0.296\n-0.380\n-1.874\n1.188\n15000\n521.832\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[2]\nbeta_snow_raw[2]\n-0.217\n-0.214\n-0.171\n-1.654\n1.349\n15000\n506.446\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[3]\nbeta_snow_raw[3]\n0.128\n0.163\n0.369\n-1.262\n1.553\n15000\n576.008\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[4]\nbeta_snow_raw[4]\n0.224\n0.229\n-0.022\n-1.279\n1.748\n15000\n631.709\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[5]\nbeta_snow_raw[5]\n0.059\n0.071\n0.116\n-1.536\n1.739\n15000\n557.727\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline[1]\nbeta_spline[1]\n-0.135\n-0.141\n0.126\n-1.384\n1.127\n15000\n219.529\nNA\nNA\n1.005\n1.014\n\n\noccupancy\nbeta_spline[2]\nbeta_spline[2]\n-0.133\n-0.143\n-0.117\n-1.338\n1.161\n15000\n205.381\nNA\nNA\n1.003\n1.009\n\n\noccupancy\nbeta_spline[3]\nbeta_spline[3]\n-0.101\n-0.122\n-0.253\n-1.475\n1.439\n15000\n258.930\nNA\nNA\n1.006\n1.016\n\n\noccupancy\nbeta_spline[4]\nbeta_spline[4]\n0.053\n0.026\n-0.060\n-1.381\n1.569\n15000\n314.366\nNA\nNA\n1.003\n1.005\n\n\noccupancy\nbeta_spline[5]\nbeta_spline[5]\n0.099\n0.078\n0.035\n-1.361\n1.595\n15000\n328.986\nNA\nNA\n1.005\n1.014\n\n\noccupancy\nbeta_spline[6]\nbeta_spline[6]\n-0.086\n-0.082\n-0.126\n-1.759\n1.648\n15000\n411.344\nNA\nNA\n1.007\n1.021\n\n\noccupancy\nbeta_spline[7]\nbeta_spline[7]\n-0.399\n-0.295\n-0.348\n-2.696\n1.943\n15000\n360.994\nNA\nNA\n1.011\n1.029\n\n\noccupancy\nbeta_spline_1\nbeta_spline_1\n-0.135\n-0.141\n0.126\n-1.384\n1.127\n15000\n219.529\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_2\nbeta_spline_2\n-0.133\n-0.143\n-0.117\n-1.338\n1.161\n15000\n205.381\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[1]\nbeta_spline_raw[1]\n0.018\n0.045\n0.142\n-1.597\n1.393\n15000\n305.974\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[2]\nbeta_spline_raw[2]\n0.086\n0.112\n0.412\n-1.260\n1.606\n15000\n173.794\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[3]\nbeta_spline_raw[3]\n-0.252\n-0.240\n-0.047\n-1.716\n0.937\n15000\n178.091\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[4]\nbeta_spline_raw[4]\n-0.344\n-0.344\n-0.173\n-1.760\n1.058\n15000\n282.285\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[5]\nbeta_spline_raw[5]\n-0.186\n-0.194\n-0.147\n-1.747\n1.318\n15000\n190.300\nNA\nNA\nNA\nNA\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nparam\nn\nn_eff\nmode\nn_mode\np_rope\nci\nhdi_low\nhdi_high\nrope_range\n\n\n\n\nalpha[1]\n15000\n292.428\n-3.411\n1\n0.000\n1\n-5.014\n-2.655\n0.18\n\n\nalpha[2]\n15000\n1468.055\n-0.418\n1\n0.144\n1\n-1.329\n0.348\n0.18\n\n\nbeta[1]\n15000\n593.915\n-1.331\n1\n0.002\n1\n-2.964\n0.123\n0.18\n\n\nbeta[2]\n15000\n1481.565\n-0.516\n1\n0.144\n1\n-3.444\n1.488\n0.18\n\n\nbeta[3]\n15000\n1156.963\n-0.969\n1\n0.060\n1\n-3.292\n1.640\n0.18\n\n\nbeta[4]\n15000\n1305.786\n-0.730\n1\n0.100\n1\n-3.212\n1.240\n0.18\n\n\nbeta[5]\n15000\n1170.789\n-0.412\n1\n0.189\n1\n-2.601\n1.640\n0.18\n\n\nbeta[6]\n15000\n883.854\n0.887\n1\n0.065\n1\n-1.433\n3.297\n0.18\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nyr\nn_reps\nn\nmean\nmedian\nmode\nn_mode\nhdi_lower\nhdi_upper\n\n\n\n\n2018\n668\n10020000\n0.046\n0.038\n0.030\n1\n0.003\n0.083\n\n\n2019\n878\n13170000\n0.043\n0.035\n0.031\n1\n0.000\n0.074\n\n\n2021\n1248\n18720000\n0.044\n0.035\n0.025\n1\n0.002\n0.081\n\n\n2022\n1406\n21090000\n0.041\n0.033\n0.025\n1\n0.001\n0.074\n\n\n2023\n959\n14385000\n0.043\n0.035\n0.026\n1\n0.002\n0.077\n\n\n2024\n1187\n17805000\n0.035\n0.030\n0.024\n1\n0.002\n0.062\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nyr\nn_sites\nn\nmean\nmedian\nmode\nn_mode\nhdi_lower\nhdi_upper\n\n\n\n\n2018\n19\n285000\n0.218\n0.212\n0.204\n1\n0.115\n0.315\n\n\n2019\n32\n480000\n0.139\n0.127\n0.116\n1\n0.034\n0.233\n\n\n2021\n39\n585000\n0.102\n0.093\n0.076\n1\n0.025\n0.169\n\n\n2022\n41\n615000\n0.114\n0.104\n0.085\n1\n0.028\n0.193\n\n\n2023\n30\n450000\n0.196\n0.165\n0.136\n1\n0.044\n0.353\n\n\n2024\n32\n480000\n0.383\n0.384\n0.385\n1\n0.139\n0.601",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>6</span>  <span class='chapter-title'>Model: eval_base_rj_100000000000_100000000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_01_eval_base_rj_100000000000_100000000000.html#traceplots",
+    "href": "06_model_01_eval_base_rj_100000000000_100000000000.html#traceplots",
+    "title": "6  Model: eval_base_rj_100000000000_100000000000",
+    "section": "6.4 Traceplots",
+    "text": "6.4 Traceplots\n\nab_paramshyper_paramsspline_paramsmu subset: best n_effmu subset: worst n_effs subset: best n_effs subset: worst n_effp subset: best n_effp subset: worst n_effpsi subset: best n_effpsi subset: worst n_eff",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>6</span>  <span class='chapter-title'>Model: eval_base_rj_100000000000_100000000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_01_eval_base_rj_100000000000_100000000000.html#relationships",
+    "href": "06_model_01_eval_base_rj_100000000000_100000000000.html#relationships",
+    "title": "6  Model: eval_base_rj_100000000000_100000000000",
+    "section": "6.5 Relationships",
+    "text": "6.5 Relationships\n\nlinear relationshipsquadratic relationships\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nNo plots available.",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>6</span>  <span class='chapter-title'>Model: eval_base_rj_100000000000_100000000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_01_eval_base_rj_100000000000_100000000000.html#s-random-effect",
+    "href": "06_model_01_eval_base_rj_100000000000_100000000000.html#s-random-effect",
+    "title": "6  Model: eval_base_rj_100000000000_100000000000",
+    "section": "6.6 s random effect",
+    "text": "6.6 s random effect\n\ns_random_effect",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>6</span>  <span class='chapter-title'>Model: eval_base_rj_100000000000_100000000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_01_eval_base_rj_100000000000_100000000000.html#residuals",
+    "href": "06_model_01_eval_base_rj_100000000000_100000000000.html#residuals",
+    "title": "6  Model: eval_base_rj_100000000000_100000000000",
+    "section": "6.7 Residuals",
+    "text": "6.7 Residuals\n\ndharma_residuals_occupancydharma_residuals_detectiondurbin_watson_detectionmoran_occupancymoran_detection",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>6</span>  <span class='chapter-title'>Model: eval_base_rj_100000000000_100000000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_02_eval_sq_rj_NA_100000000020.html",
+    "href": "06_model_02_eval_sq_rj_NA_100000000020.html",
+    "title": "7  Model: eval_sq_rj_NA_100000000020",
+    "section": "",
+    "text": "7.1 Overview\nfield\nvalue\n\n\n\n\nrun_id\neval_sq_rj_NA_100000000020\n\n\nphase_source\nsq_rj\n\n\nsource_model_id\nNA\n\n\nsource_model_id_compact\nNA\n\n\nsource_id_type\nsq_rj\n\n\nfit_model_id\n100000000020\n\n\nfit_id_order\nlureDays , bar , heb , tree , elev_m , eastness , northness , slope , treeDist , tpi_25 , aso_snow_depth, evi_short_int\n\n\nlabel\ndet: lureDays | occ: aso_snow_depth + aso_snow_depth_sq\n\n\nformula_label\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + aso_snow_depth + aso_snow_depth_sq\n\n\ndescription\nred fox model 1, snow spline jdt re nc, det lure, occ snow sq\n\n\nspecies\nRed Fox\n\n\ndt_tm\n1776285475\n\n\nab_terms\nalpha_int + lureDays , beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + aso_snow_depth + aso_snow_depth_sq\n\n\nselected_covs\nlureDays , aso_snow_depth\n\n\nselected_forms\nlinear , quadratic\n\n\ndet_covs\nalpha_int, lureDays\n\n\nocc_covs\nbeta.int , yr2019 , yr2021 , yr2022 , yr2023 , yr2024 , aso_snow_depth , aso_snow_depth_sq\n\n\nfit_status\nok\n\n\nconverged\nTRUE\n\n\nn_post\n5000\n\n\nn_burn\n1000\n\n\nn_chains\n3\n\n\nwaic\n377.0448",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>7</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100000000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_02_eval_sq_rj_NA_100000000020.html#model-interpretation-guide",
+    "href": "06_model_02_eval_sq_rj_NA_100000000020.html#model-interpretation-guide",
+    "title": "7  Model: eval_sq_rj_NA_100000000020",
+    "section": "7.2 Model interpretation guide",
+    "text": "7.2 Model interpretation guide\n\n\n\n\n\n\nNoteROPE (region of practical equivalence)\n\n\n\nROPE is used to assess whether an estimated effect is practically distinguishable from zero. In this analysis, ROPE is applied to coefficients on scaled covariates, so values near zero correspond to negligible standardized effects.\np_rope represents the proportion of the full posterior distribution that lies within the ROPE.\nAs a decision guide:\n\np_rope ≥ 0.975: effect is likely not meaningfully different from zero (practically equivalent)\n\n0.025 &lt; p_rope &lt; 0.975: effect is ambiguous or weakly supported\n\np_rope ≤ 0.025: effect is likely meaningfully different from zero\n\nThese thresholds are interpretive guidelines and should be considered alongside uncertainty intervals and ecological context.\n\n7.2.1 Convergence (R̂)\nR̂ (Gelman–Rubin statistic) assesses MCMC convergence across chains. Values close to 1 indicate good mixing and convergence.\n\nR̂ ≈ 1.00: good convergence\n\nR̂ &gt; 1.01–1.05: potential convergence issues\n\n\n\n7.2.2 Derived quantities\n\np_dat: estimated detection probability summarized by year\n\npsi_dat: estimated occupancy probability summarized by year\n\nThese summaries provide an interpretable scale for model results and help link parameter estimates to ecological patterns over time.",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>7</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100000000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_02_eval_sq_rj_NA_100000000020.html#model-tables",
+    "href": "06_model_02_eval_sq_rj_NA_100000000020.html#model-tables",
+    "title": "7  Model: eval_sq_rj_NA_100000000020",
+    "section": "7.3 Model tables",
+    "text": "7.3 Model tables\n\nconvergence summaryestimatesrope summaryp_datpsi_dat\n\n\n\n\n\n\n\nparameter\nrhat\nrhat_upper\n\n\n\n\nsd_s\n1.032\n1.072\n\n\nsd_beta\n1.018\n1.056\n\n\nbeta_snow[2]\n1.009\n1.031\n\n\nbeta[1]\n1.008\n1.020\n\n\nbeta_spline[7]\n1.008\n1.019\n\n\nbeta[2]\n1.008\n1.028\n\n\nbeta_spline[6]\n1.006\n1.020\n\n\nbeta_spline[1]\n1.006\n1.016\n\n\nbeta_snow[4]\n1.005\n1.019\n\n\nbeta_snow[3]\n1.005\n1.019\n\n\nbeta_snow[5]\n1.005\n1.018\n\n\nbeta_spline[4]\n1.005\n1.012\n\n\nalpha[1]\n1.004\n1.005\n\n\nbeta_snow[6]\n1.004\n1.015\n\n\nbeta[4]\n1.004\n1.015\n\n\nbeta[5]\n1.004\n1.011\n\n\nbeta_snow[7]\n1.003\n1.012\n\n\nbeta[3]\n1.003\n1.012\n\n\nbeta_spline[3]\n1.003\n1.008\n\n\nbeta[6]\n1.003\n1.008\n\n\nbeta_spline[2]\n1.002\n1.006\n\n\nbeta_spline[5]\n1.002\n1.005\n\n\nsd_beta_s\n1.002\n1.006\n\n\nbeta_snow[1]\n1.002\n1.005\n\n\nbeta[8]\n1.002\n1.005\n\n\nbeta[7]\n1.001\n1.003\n\n\nalpha[2]\n1.001\n1.003\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ncomponent\ncov\nterm\nmean\nmedian\nmode\nlow\nhigh\nn\nn_eff\np_rope\nrope_range\nrhat\nrhat_upper\n\n\n\n\ndetection\nalpha_int\nalpha[1]\n-3.419\n-3.401\n-3.402\n-3.837\n-2.986\n15000\n424.341\n0.000\n0.18\n1.004\n1.005\n\n\ndetection\nlureDays\nalpha[2]\n-0.357\n-0.353\n-0.325\n-0.661\n-0.058\n15000\n1252.682\n0.172\n0.18\n1.001\n1.003\n\n\noccupancy\nbeta.int\nbeta[1]\n-1.115\n-1.108\n-1.040\n-1.833\n-0.409\n15000\n522.652\n0.017\n0.18\n1.008\n1.020\n\n\noccupancy\nyr2019\nbeta[2]\n-0.410\n-0.385\n-0.261\n-1.541\n0.593\n15000\n1635.410\n0.188\n0.18\n1.008\n1.028\n\n\noccupancy\nyr2021\nbeta[3]\n-1.125\n-1.116\n-1.209\n-2.047\n-0.132\n15000\n1418.632\n0.040\n0.18\n1.003\n1.012\n\n\noccupancy\nyr2022\nbeta[4]\n-0.636\n-0.625\n-0.610\n-1.616\n0.399\n15000\n1661.392\n0.140\n0.18\n1.004\n1.015\n\n\noccupancy\nyr2023\nbeta[5]\n-0.531\n-0.529\n-0.628\n-1.479\n0.449\n15000\n1611.077\n0.162\n0.18\n1.004\n1.011\n\n\noccupancy\nyr2024\nbeta[6]\n0.807\n0.808\n0.877\n-0.132\n1.710\n15000\n855.766\n0.094\n0.18\n1.003\n1.008\n\n\noccupancy\naso_snow_depth\nbeta[7]\n-1.102\n-1.078\n-0.971\n-1.805\n-0.325\n15000\n775.405\n0.013\n0.18\n1.001\n1.003\n\n\noccupancy\naso_snow_depth_sq\nbeta[8]\n-0.832\n-0.805\n-0.855\n-1.482\n-0.019\n15000\n598.649\n0.068\n0.18\n1.002\n1.005\n\n\noccupancy\nbeta_snow[1]\nbeta_snow[1]\n0.729\n0.760\n0.857\n-0.716\n2.159\n15000\n559.879\nNA\nNA\n1.002\n1.005\n\n\noccupancy\nbeta_snow[2]\nbeta_snow[2]\n-0.711\n-0.729\n-0.704\n-2.078\n0.708\n15000\n502.180\nNA\nNA\n1.009\n1.031\n\n\noccupancy\nbeta_snow[3]\nbeta_snow[3]\n-2.540\n-2.567\n-2.599\n-4.949\n0.033\n15000\n539.852\nNA\nNA\n1.005\n1.019\n\n\noccupancy\nbeta_snow[4]\nbeta_snow[4]\n-4.574\n-4.579\n-4.526\n-8.270\n-1.031\n15000\n573.482\nNA\nNA\n1.005\n1.019\n\n\noccupancy\nbeta_snow[5]\nbeta_snow[5]\n-6.644\n-6.654\n-6.901\n-11.454\n-1.756\n15000\n603.772\nNA\nNA\n1.005\n1.018\n\n\noccupancy\nbeta_snow[6]\nbeta_snow[6]\n-8.527\n-8.534\n-8.623\n-15.053\n-2.271\n15000\n642.385\nNA\nNA\n1.004\n1.015\n\n\noccupancy\nbeta_snow[7]\nbeta_snow[7]\n-10.330\n-10.328\n-10.383\n-18.393\n-1.990\n15000\n651.664\nNA\nNA\n1.003\n1.012\n\n\noccupancy\nbeta_snow_1\nbeta_snow_1\n0.729\n0.760\n0.857\n-0.716\n2.159\n15000\n559.879\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_2\nbeta_snow_2\n-0.711\n-0.729\n-0.704\n-2.078\n0.708\n15000\n502.180\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[1]\nbeta_snow_raw[1]\n-0.431\n-0.473\n-0.190\n-1.960\n1.064\n15000\n593.669\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[2]\nbeta_snow_raw[2]\n-0.202\n-0.223\n-0.336\n-1.704\n1.342\n15000\n624.972\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[3]\nbeta_snow_raw[3]\n-0.042\n-0.029\n0.044\n-1.384\n1.453\n15000\n533.975\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[4]\nbeta_snow_raw[4]\n0.192\n0.174\n0.049\n-1.266\n1.699\n15000\n615.910\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[5]\nbeta_snow_raw[5]\n0.079\n0.069\n-0.159\n-1.552\n1.501\n15000\n585.501\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline[1]\nbeta_spline[1]\n0.013\n0.013\n0.036\n-1.240\n1.307\n15000\n320.793\nNA\nNA\n1.006\n1.016\n\n\noccupancy\nbeta_spline[2]\nbeta_spline[2]\n-0.003\n-0.020\n-0.062\n-1.164\n1.248\n15000\n403.262\nNA\nNA\n1.002\n1.006\n\n\noccupancy\nbeta_spline[3]\nbeta_spline[3]\n-0.005\n-0.029\n-0.019\n-1.461\n1.386\n15000\n366.550\nNA\nNA\n1.003\n1.008\n\n\noccupancy\nbeta_spline[4]\nbeta_spline[4]\n0.095\n0.060\n-0.062\n-1.312\n1.651\n15000\n408.621\nNA\nNA\n1.005\n1.012\n\n\noccupancy\nbeta_spline[5]\nbeta_spline[5]\n0.194\n0.167\n0.086\n-1.333\n1.704\n15000\n496.034\nNA\nNA\n1.002\n1.005\n\n\noccupancy\nbeta_spline[6]\nbeta_spline[6]\n0.023\n0.028\n0.100\n-1.681\n1.711\n15000\n490.888\nNA\nNA\n1.006\n1.020\n\n\noccupancy\nbeta_spline[7]\nbeta_spline[7]\n-0.192\n-0.087\n0.110\n-2.456\n2.100\n15000\n393.661\nNA\nNA\n1.008\n1.019\n\n\noccupancy\nbeta_spline_1\nbeta_spline_1\n0.013\n0.013\n0.036\n-1.240\n1.307\n15000\n320.793\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_2\nbeta_spline_2\n-0.003\n-0.020\n-0.062\n-1.164\n1.248\n15000\n403.262\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[1]\nbeta_spline_raw[1]\n-0.056\n-0.043\n0.278\n-1.512\n1.498\n15000\n301.637\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[2]\nbeta_spline_raw[2]\n0.159\n0.199\n0.423\n-1.139\n1.581\n15000\n306.959\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[3]\nbeta_spline_raw[3]\n0.039\n0.014\n-0.237\n-1.276\n1.610\n15000\n251.814\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[4]\nbeta_spline_raw[4]\n-0.350\n-0.354\n-0.328\n-1.826\n1.071\n15000\n416.395\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[5]\nbeta_spline_raw[5]\n0.007\n0.039\n0.318\n-1.544\n1.503\n15000\n344.029\nNA\nNA\nNA\nNA\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nparam\nn\nn_eff\nmode\nn_mode\np_rope\nci\nhdi_low\nhdi_high\nrope_range\n\n\n\n\nalpha[1]\n15000\n424.341\n-3.402\n1\n0.000\n1\n-4.469\n-2.627\n0.18\n\n\nalpha[2]\n15000\n1252.682\n-0.325\n1\n0.172\n1\n-1.150\n0.379\n0.18\n\n\nbeta[1]\n15000\n522.652\n-1.040\n1\n0.017\n1\n-2.781\n0.510\n0.18\n\n\nbeta[2]\n15000\n1635.410\n-0.261\n1\n0.188\n1\n-3.701\n1.817\n0.18\n\n\nbeta[3]\n15000\n1418.632\n-1.209\n1\n0.040\n1\n-3.396\n0.804\n0.18\n\n\nbeta[4]\n15000\n1661.392\n-0.610\n1\n0.140\n1\n-3.210\n1.454\n0.18\n\n\nbeta[5]\n15000\n1611.077\n-0.628\n1\n0.162\n1\n-2.755\n1.417\n0.18\n\n\nbeta[6]\n15000\n855.766\n0.877\n1\n0.094\n1\n-1.317\n2.794\n0.18\n\n\nbeta[7]\n15000\n775.405\n-0.971\n1\n0.013\n1\n-3.075\n0.402\n0.18\n\n\nbeta[8]\n15000\n598.649\n-0.855\n1\n0.068\n1\n-2.539\n0.397\n0.18\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nyr\nn_reps\nn\nmean\nmedian\nmode\nn_mode\nhdi_lower\nhdi_upper\n\n\n\n\n2018\n668\n10020000\n0.046\n0.038\n0.030\n1\n0.003\n0.083\n\n\n2019\n878\n13170000\n0.045\n0.035\n0.031\n1\n0.000\n0.076\n\n\n2021\n1248\n18720000\n0.044\n0.035\n0.023\n1\n0.002\n0.081\n\n\n2022\n1406\n21090000\n0.042\n0.034\n0.025\n1\n0.001\n0.075\n\n\n2023\n959\n14385000\n0.043\n0.035\n0.028\n1\n0.002\n0.077\n\n\n2024\n1187\n17805000\n0.035\n0.031\n0.025\n1\n0.003\n0.062\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nyr\nn_sites\nn\nmean\nmedian\nmode\nn_mode\nhdi_lower\nhdi_upper\n\n\n\n\n2018\n19\n285000\n0.220\n0.217\n0.261\n1\n0.000\n0.387\n\n\n2019\n32\n480000\n0.131\n0.097\n0.004\n1\n0.000\n0.307\n\n\n2021\n39\n585000\n0.107\n0.095\n0.069\n1\n0.000\n0.204\n\n\n2022\n41\n615000\n0.109\n0.086\n0.004\n1\n0.000\n0.231\n\n\n2023\n30\n450000\n0.183\n0.157\n0.127\n1\n0.000\n0.346\n\n\n2024\n32\n480000\n0.391\n0.400\n0.411\n1\n0.103\n0.661",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>7</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100000000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_02_eval_sq_rj_NA_100000000020.html#traceplots",
+    "href": "06_model_02_eval_sq_rj_NA_100000000020.html#traceplots",
+    "title": "7  Model: eval_sq_rj_NA_100000000020",
+    "section": "7.4 Traceplots",
+    "text": "7.4 Traceplots\n\nab_paramshyper_paramsspline_paramsmu subset: best n_effmu subset: worst n_effs subset: best n_effs subset: worst n_effp subset: best n_effp subset: worst n_effpsi subset: best n_effpsi subset: worst n_eff",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>7</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100000000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_02_eval_sq_rj_NA_100000000020.html#relationships",
+    "href": "06_model_02_eval_sq_rj_NA_100000000020.html#relationships",
+    "title": "7  Model: eval_sq_rj_NA_100000000020",
+    "section": "7.5 Relationships",
+    "text": "7.5 Relationships\n\nlinear relationshipsquadratic relationships",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>7</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100000000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_02_eval_sq_rj_NA_100000000020.html#s-random-effect",
+    "href": "06_model_02_eval_sq_rj_NA_100000000020.html#s-random-effect",
+    "title": "7  Model: eval_sq_rj_NA_100000000020",
+    "section": "7.6 s random effect",
+    "text": "7.6 s random effect\n\ns_random_effect",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>7</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100000000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_02_eval_sq_rj_NA_100000000020.html#residuals",
+    "href": "06_model_02_eval_sq_rj_NA_100000000020.html#residuals",
+    "title": "7  Model: eval_sq_rj_NA_100000000020",
+    "section": "7.7 Residuals",
+    "text": "7.7 Residuals\n\ndharma_residuals_occupancydharma_residuals_detectiondurbin_watson_detectionmoran_occupancymoran_detection",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>7</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100000000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_03_eval_sq_rj_NA_100010000020.html",
+    "href": "06_model_03_eval_sq_rj_NA_100010000020.html",
+    "title": "8  Model: eval_sq_rj_NA_100010000020",
+    "section": "",
+    "text": "8.1 Overview\nfield\nvalue\n\n\n\n\nrun_id\neval_sq_rj_NA_100010000020\n\n\nphase_source\nsq_rj\n\n\nsource_model_id\nNA\n\n\nsource_model_id_compact\nNA\n\n\nsource_id_type\nsq_rj\n\n\nfit_model_id\n100010000020\n\n\nfit_id_order\nlureDays , bar , heb , tree , elev_m , eastness , northness , slope , treeDist , tpi_25 , aso_snow_depth, evi_short_int\n\n\nlabel\ndet: lureDays | occ: elev_m + aso_snow_depth + aso_snow_depth_sq\n\n\nformula_label\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + elev_m + aso_snow_depth + aso_snow_depth_sq\n\n\ndescription\nred fox model 1, snow spline jdt re nc, det lure, occ snow sq\n\n\nspecies\nRed Fox\n\n\ndt_tm\n1776291902\n\n\nab_terms\nalpha_int + lureDays , beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + elev_m + aso_snow_depth + aso_snow_depth_sq\n\n\nselected_covs\nlureDays , elev_m , aso_snow_depth\n\n\nselected_forms\nlinear , linear , quadratic\n\n\ndet_covs\nalpha_int, lureDays\n\n\nocc_covs\nbeta.int , yr2019 , yr2021 , yr2022 , yr2023 , yr2024 , elev_m , aso_snow_depth , aso_snow_depth_sq\n\n\nfit_status\nok\n\n\nconverged\nFALSE\n\n\nn_post\n5000\n\n\nn_burn\n1000\n\n\nn_chains\n3\n\n\nwaic\n378.5627",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>8</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100010000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_03_eval_sq_rj_NA_100010000020.html#model-interpretation-guide",
+    "href": "06_model_03_eval_sq_rj_NA_100010000020.html#model-interpretation-guide",
+    "title": "8  Model: eval_sq_rj_NA_100010000020",
+    "section": "8.2 Model interpretation guide",
+    "text": "8.2 Model interpretation guide\n\n\n\n\n\n\nNoteROPE (region of practical equivalence)\n\n\n\nROPE is used to assess whether an estimated effect is practically distinguishable from zero. In this analysis, ROPE is applied to coefficients on scaled covariates, so values near zero correspond to negligible standardized effects.\np_rope represents the proportion of the full posterior distribution that lies within the ROPE.\nAs a decision guide:\n\np_rope ≥ 0.975: effect is likely not meaningfully different from zero (practically equivalent)\n\n0.025 &lt; p_rope &lt; 0.975: effect is ambiguous or weakly supported\n\np_rope ≤ 0.025: effect is likely meaningfully different from zero\n\nThese thresholds are interpretive guidelines and should be considered alongside uncertainty intervals and ecological context.\n\n8.2.1 Convergence (R̂)\nR̂ (Gelman–Rubin statistic) assesses MCMC convergence across chains. Values close to 1 indicate good mixing and convergence.\n\nR̂ ≈ 1.00: good convergence\n\nR̂ &gt; 1.01–1.05: potential convergence issues\n\n\n\n8.2.2 Derived quantities\n\np_dat: estimated detection probability summarized by year\n\npsi_dat: estimated occupancy probability summarized by year\n\nThese summaries provide an interpretable scale for model results and help link parameter estimates to ecological patterns over time.",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>8</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100010000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_03_eval_sq_rj_NA_100010000020.html#model-tables",
+    "href": "06_model_03_eval_sq_rj_NA_100010000020.html#model-tables",
+    "title": "8  Model: eval_sq_rj_NA_100010000020",
+    "section": "8.3 Model tables",
+    "text": "8.3 Model tables\n\nconvergence summaryestimatesrope summaryp_datpsi_dat\n\n\n\n\n\n\n\nparameter\nrhat\nrhat_upper\n\n\n\n\nsd_s\n1.180\n1.522\n\n\nalpha[1]\n1.048\n1.141\n\n\nbeta[9]\n1.009\n1.030\n\n\nbeta_spline[2]\n1.008\n1.027\n\n\nbeta_spline[5]\n1.006\n1.019\n\n\nbeta_spline[3]\n1.005\n1.015\n\n\nbeta[8]\n1.004\n1.013\n\n\nbeta_spline[6]\n1.003\n1.013\n\n\nbeta_spline[1]\n1.003\n1.010\n\n\nbeta_spline[4]\n1.003\n1.010\n\n\nbeta_snow[2]\n1.003\n1.007\n\n\nbeta[1]\n1.002\n1.007\n\n\nbeta[3]\n1.002\n1.007\n\n\nbeta[2]\n1.002\n1.006\n\n\nbeta_snow[7]\n1.002\n1.005\n\n\nsd_beta_s\n1.001\n1.003\n\n\nbeta_snow[1]\n1.001\n1.002\n\n\nsd_beta\n1.001\n1.002\n\n\nbeta_snow[6]\n1.001\n1.003\n\n\nalpha[2]\n1.001\n1.002\n\n\nbeta_snow[3]\n1.001\n1.002\n\n\nbeta[4]\n1.001\n1.003\n\n\nbeta_spline[7]\n1.001\n1.002\n\n\nbeta_snow[5]\n1.000\n1.001\n\n\nbeta[7]\n1.000\n1.000\n\n\nbeta_snow[4]\n1.000\n1.001\n\n\nbeta[5]\n1.000\n1.001\n\n\nbeta[6]\n1.000\n1.000\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ncomponent\ncov\nterm\nmean\nmedian\nmode\nlow\nhigh\nn\nn_eff\np_rope\nrope_range\nrhat\nrhat_upper\n\n\n\n\ndetection\nalpha_int\nalpha[1]\n-3.468\n-3.448\n-3.381\n-3.893\n-3.075\n15000\n395.628\n0.000\n0.18\n1.048\n1.141\n\n\ndetection\nlureDays\nalpha[2]\n-0.402\n-0.397\n-0.370\n-0.687\n-0.117\n15000\n1508.662\n0.108\n0.18\n1.001\n1.002\n\n\noccupancy\nbeta.int\nbeta[1]\n-1.086\n-1.069\n-0.943\n-1.813\n-0.355\n15000\n532.558\n0.017\n0.18\n1.002\n1.007\n\n\noccupancy\nyr2019\nbeta[2]\n0.039\n0.056\n0.203\n-1.173\n1.172\n15000\n1742.568\n0.190\n0.18\n1.002\n1.006\n\n\noccupancy\nyr2021\nbeta[3]\n-1.396\n-1.398\n-1.472\n-2.410\n-0.361\n15000\n1360.088\n0.021\n0.18\n1.002\n1.007\n\n\noccupancy\nyr2022\nbeta[4]\n-0.700\n-0.698\n-0.722\n-1.674\n0.376\n15000\n1267.498\n0.128\n0.18\n1.001\n1.003\n\n\noccupancy\nyr2023\nbeta[5]\n-0.652\n-0.648\n-0.743\n-1.664\n0.304\n15000\n1480.519\n0.133\n0.18\n1.000\n1.001\n\n\noccupancy\nyr2024\nbeta[6]\n0.354\n0.328\n0.272\n-0.682\n1.372\n15000\n789.704\n0.202\n0.18\n1.000\n1.000\n\n\noccupancy\nelev_m\nbeta[7]\n0.774\n0.760\n0.746\n0.148\n1.384\n15000\n1009.706\n0.054\n0.18\n1.000\n1.000\n\n\noccupancy\naso_snow_depth\nbeta[8]\n-1.004\n-0.974\n-0.944\n-1.738\n-0.198\n15000\n880.013\n0.029\n0.18\n1.004\n1.013\n\n\noccupancy\naso_snow_depth_sq\nbeta[9]\n-0.866\n-0.837\n-0.841\n-1.548\n-0.112\n15000\n724.837\n0.050\n0.18\n1.009\n1.030\n\n\noccupancy\nbeta_snow[1]\nbeta_snow[1]\n0.702\n0.743\n1.017\n-0.620\n2.196\n15000\n616.214\nNA\nNA\n1.001\n1.002\n\n\noccupancy\nbeta_snow[2]\nbeta_snow[2]\n-0.739\n-0.727\n-0.424\n-2.115\n0.692\n15000\n606.992\nNA\nNA\n1.003\n1.007\n\n\noccupancy\nbeta_snow[3]\nbeta_snow[3]\n-2.527\n-2.531\n-2.524\n-5.121\n-0.024\n15000\n594.934\nNA\nNA\n1.001\n1.002\n\n\noccupancy\nbeta_snow[4]\nbeta_snow[4]\n-4.541\n-4.522\n-4.489\n-8.121\n-0.761\n15000\n629.809\nNA\nNA\n1.000\n1.001\n\n\noccupancy\nbeta_snow[5]\nbeta_snow[5]\n-6.574\n-6.547\n-6.476\n-11.535\n-1.584\n15000\n634.929\nNA\nNA\n1.000\n1.001\n\n\noccupancy\nbeta_snow[6]\nbeta_snow[6]\n-8.446\n-8.408\n-8.513\n-14.838\n-1.782\n15000\n655.635\nNA\nNA\n1.001\n1.003\n\n\noccupancy\nbeta_snow[7]\nbeta_snow[7]\n-10.261\n-10.249\n-10.378\n-18.324\n-1.773\n15000\n664.900\nNA\nNA\n1.002\n1.005\n\n\noccupancy\nbeta_snow_1\nbeta_snow_1\n0.702\n0.743\n1.017\n-0.620\n2.196\n15000\n616.214\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_2\nbeta_snow_2\n-0.739\n-0.727\n-0.424\n-2.115\n0.692\n15000\n606.992\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[1]\nbeta_snow_raw[1]\n-0.332\n-0.379\n-0.442\n-1.900\n1.236\n15000\n560.562\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[2]\nbeta_snow_raw[2]\n-0.238\n-0.263\n-0.296\n-1.787\n1.273\n15000\n522.012\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[3]\nbeta_snow_raw[3]\n-0.037\n-0.039\n0.176\n-1.588\n1.282\n15000\n451.629\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[4]\nbeta_snow_raw[4]\n0.161\n0.155\n-0.186\n-1.446\n1.735\n15000\n543.222\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[5]\nbeta_snow_raw[5]\n0.046\n0.057\n0.097\n-1.528\n1.572\n15000\n675.064\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline[1]\nbeta_spline[1]\n-0.017\n-0.020\n0.007\n-1.195\n1.221\n15000\n365.721\nNA\nNA\n1.003\n1.010\n\n\noccupancy\nbeta_spline[2]\nbeta_spline[2]\n0.009\n-0.010\n0.092\n-1.011\n1.409\n15000\n365.939\nNA\nNA\n1.008\n1.027\n\n\noccupancy\nbeta_spline[3]\nbeta_spline[3]\n0.091\n0.081\n-0.149\n-1.291\n1.565\n15000\n359.014\nNA\nNA\n1.005\n1.015\n\n\noccupancy\nbeta_spline[4]\nbeta_spline[4]\n0.232\n0.203\n0.178\n-1.171\n1.730\n15000\n462.070\nNA\nNA\n1.003\n1.010\n\n\noccupancy\nbeta_spline[5]\nbeta_spline[5]\n0.306\n0.287\n0.160\n-1.156\n1.888\n15000\n437.989\nNA\nNA\n1.006\n1.019\n\n\noccupancy\nbeta_spline[6]\nbeta_spline[6]\n0.151\n0.139\n0.002\n-1.482\n1.937\n15000\n510.578\nNA\nNA\n1.003\n1.013\n\n\noccupancy\nbeta_spline[7]\nbeta_spline[7]\n-0.001\n0.040\n0.135\n-2.056\n2.392\n15000\n596.107\nNA\nNA\n1.001\n1.002\n\n\noccupancy\nbeta_spline_1\nbeta_spline_1\n-0.017\n-0.020\n0.007\n-1.195\n1.221\n15000\n365.721\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_2\nbeta_spline_2\n0.009\n-0.010\n0.092\n-1.011\n1.409\n15000\n365.939\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[1]\nbeta_spline_raw[1]\n0.122\n0.098\n0.138\n-1.276\n1.563\n15000\n406.075\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[2]\nbeta_spline_raw[2]\n0.070\n0.102\n0.205\n-1.568\n1.320\n15000\n264.600\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[3]\nbeta_spline_raw[3]\n-0.128\n-0.143\n-0.299\n-1.470\n1.170\n15000\n379.851\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[4]\nbeta_spline_raw[4]\n-0.349\n-0.367\n-0.488\n-1.963\n1.211\n15000\n200.195\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[5]\nbeta_spline_raw[5]\n-0.010\n-0.060\n-0.169\n-1.524\n1.709\n15000\n420.800\nNA\nNA\nNA\nNA\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nparam\nn\nn_eff\nmode\nn_mode\np_rope\nci\nhdi_low\nhdi_high\nrope_range\n\n\n\n\nalpha[1]\n15000\n395.628\n-3.381\n1\n0.000\n1\n-4.709\n-2.601\n0.18\n\n\nalpha[2]\n15000\n1508.662\n-0.370\n1\n0.108\n1\n-1.058\n0.205\n0.18\n\n\nbeta[1]\n15000\n532.558\n-0.943\n1\n0.017\n1\n-3.173\n0.531\n0.18\n\n\nbeta[2]\n15000\n1742.568\n0.203\n1\n0.190\n1\n-2.832\n2.743\n0.18\n\n\nbeta[3]\n15000\n1360.088\n-1.472\n1\n0.021\n1\n-3.939\n0.723\n0.18\n\n\nbeta[4]\n15000\n1267.498\n-0.722\n1\n0.128\n1\n-3.210\n1.865\n0.18\n\n\nbeta[5]\n15000\n1480.519\n-0.743\n1\n0.133\n1\n-2.914\n1.594\n0.18\n\n\nbeta[6]\n15000\n789.704\n0.272\n1\n0.202\n1\n-1.972\n3.243\n0.18\n\n\nbeta[7]\n15000\n1009.706\n0.746\n1\n0.054\n1\n-0.591\n2.211\n0.18\n\n\nbeta[8]\n15000\n880.013\n-0.944\n1\n0.029\n1\n-2.959\n0.547\n0.18\n\n\nbeta[9]\n15000\n724.837\n-0.841\n1\n0.050\n1\n-2.732\n0.459\n0.18\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nyr\nn_reps\nn\nmean\nmedian\nmode\nn_mode\nhdi_lower\nhdi_upper\n\n\n\n\n2018\n668\n10020000\n0.046\n0.037\n0.028\n1\n0.002\n0.083\n\n\n2019\n878\n13170000\n0.044\n0.034\n0.029\n1\n0.000\n0.076\n\n\n2021\n1248\n18720000\n0.043\n0.033\n0.021\n1\n0.002\n0.081\n\n\n2022\n1406\n21090000\n0.041\n0.032\n0.021\n1\n0.001\n0.075\n\n\n2023\n959\n14385000\n0.042\n0.033\n0.022\n1\n0.001\n0.076\n\n\n2024\n1187\n17805000\n0.034\n0.029\n0.021\n1\n0.002\n0.061\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nyr\nn_sites\nn\nmean\nmedian\nmode\nn_mode\nhdi_lower\nhdi_upper\n\n\n\n\n2018\n19\n285000\n0.191\n0.144\n0.034\n1\n0.0\n0.418\n\n\n2019\n32\n480000\n0.109\n0.049\n0.004\n1\n0.0\n0.296\n\n\n2021\n39\n585000\n0.112\n0.091\n0.054\n1\n0.0\n0.222\n\n\n2022\n41\n615000\n0.115\n0.080\n0.007\n1\n0.0\n0.257\n\n\n2023\n30\n450000\n0.183\n0.147\n0.010\n1\n0.0\n0.371\n\n\n2024\n32\n480000\n0.434\n0.426\n0.365\n1\n0.1\n0.795",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>8</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100010000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_03_eval_sq_rj_NA_100010000020.html#traceplots",
+    "href": "06_model_03_eval_sq_rj_NA_100010000020.html#traceplots",
+    "title": "8  Model: eval_sq_rj_NA_100010000020",
+    "section": "8.4 Traceplots",
+    "text": "8.4 Traceplots\n\nab_paramshyper_paramsspline_paramsmu subset: best n_effmu subset: worst n_effs subset: best n_effs subset: worst n_effp subset: best n_effp subset: worst n_effpsi subset: best n_effpsi subset: worst n_eff",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>8</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100010000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_03_eval_sq_rj_NA_100010000020.html#relationships",
+    "href": "06_model_03_eval_sq_rj_NA_100010000020.html#relationships",
+    "title": "8  Model: eval_sq_rj_NA_100010000020",
+    "section": "8.5 Relationships",
+    "text": "8.5 Relationships\n\nlinear relationshipsquadratic relationships",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>8</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100010000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_03_eval_sq_rj_NA_100010000020.html#s-random-effect",
+    "href": "06_model_03_eval_sq_rj_NA_100010000020.html#s-random-effect",
+    "title": "8  Model: eval_sq_rj_NA_100010000020",
+    "section": "8.6 s random effect",
+    "text": "8.6 s random effect\n\ns_random_effect",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>8</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100010000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_03_eval_sq_rj_NA_100010000020.html#residuals",
+    "href": "06_model_03_eval_sq_rj_NA_100010000020.html#residuals",
+    "title": "8  Model: eval_sq_rj_NA_100010000020",
+    "section": "8.7 Residuals",
+    "text": "8.7 Residuals\n\ndharma_residuals_occupancydharma_residuals_detectiondurbin_watson_detectionmoran_occupancymoran_detection",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>8</span>  <span class='chapter-title'>Model: eval_sq_rj_NA_100010000020</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_04_eval_base_rj_NA_100010000000.html",
+    "href": "06_model_04_eval_base_rj_NA_100010000000.html",
+    "title": "9  Model: eval_base_rj_NA_100010000000",
+    "section": "",
+    "text": "9.1 Overview\nfield\nvalue\n\n\n\n\nrun_id\neval_base_rj_NA_100010000000\n\n\nphase_source\nbase_rj\n\n\nsource_model_id\nNA\n\n\nsource_model_id_compact\nNA\n\n\nsource_id_type\nbase_rj\n\n\nfit_model_id\n100010000000\n\n\nfit_id_order\nlureDays , bar , heb , tree , elev_m , eastness , northness , slope , treeDist , tpi_25 , aso_snow_depth, evi_short_int\n\n\nlabel\ndet: lureDays | occ: elev_m\n\n\nformula_label\nalpha_int + lureDays ; beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + elev_m\n\n\ndescription\nred fox model 1, snow spline jdt re nc, det lure, occ elev\n\n\nspecies\nRed Fox\n\n\ndt_tm\n1776296866\n\n\nab_terms\nalpha_int + lureDays , beta.int + yr2019 + yr2021 + yr2022 + yr2023 + yr2024 + elev_m\n\n\nselected_covs\nlureDays, elev_m\n\n\nselected_forms\nlinear, linear\n\n\ndet_covs\nalpha_int, lureDays\n\n\nocc_covs\nbeta.int, yr2019 , yr2021 , yr2022 , yr2023 , yr2024 , elev_m\n\n\nfit_status\nok\n\n\nconverged\nTRUE\n\n\nn_post\n5000\n\n\nn_burn\n1000\n\n\nn_chains\n3\n\n\nwaic\n378.0066",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>9</span>  <span class='chapter-title'>Model: eval_base_rj_NA_100010000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_04_eval_base_rj_NA_100010000000.html#model-interpretation-guide",
+    "href": "06_model_04_eval_base_rj_NA_100010000000.html#model-interpretation-guide",
+    "title": "9  Model: eval_base_rj_NA_100010000000",
+    "section": "9.2 Model interpretation guide",
+    "text": "9.2 Model interpretation guide\n\n\n\n\n\n\nNoteROPE (region of practical equivalence)\n\n\n\nROPE is used to assess whether an estimated effect is practically distinguishable from zero. In this analysis, ROPE is applied to coefficients on scaled covariates, so values near zero correspond to negligible standardized effects.\np_rope represents the proportion of the full posterior distribution that lies within the ROPE.\nAs a decision guide:\n\np_rope ≥ 0.975: effect is likely not meaningfully different from zero (practically equivalent)\n\n0.025 &lt; p_rope &lt; 0.975: effect is ambiguous or weakly supported\n\np_rope ≤ 0.025: effect is likely meaningfully different from zero\n\nThese thresholds are interpretive guidelines and should be considered alongside uncertainty intervals and ecological context.\n\n9.2.1 Convergence (R̂)\nR̂ (Gelman–Rubin statistic) assesses MCMC convergence across chains. Values close to 1 indicate good mixing and convergence.\n\nR̂ ≈ 1.00: good convergence\n\nR̂ &gt; 1.01–1.05: potential convergence issues\n\n\n\n9.2.2 Derived quantities\n\np_dat: estimated detection probability summarized by year\n\npsi_dat: estimated occupancy probability summarized by year\n\nThese summaries provide an interpretable scale for model results and help link parameter estimates to ecological patterns over time.",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>9</span>  <span class='chapter-title'>Model: eval_base_rj_NA_100010000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_04_eval_base_rj_NA_100010000000.html#model-tables",
+    "href": "06_model_04_eval_base_rj_NA_100010000000.html#model-tables",
+    "title": "9  Model: eval_base_rj_NA_100010000000",
+    "section": "9.3 Model tables",
+    "text": "9.3 Model tables\n\nconvergence summaryestimatesrope summaryp_datpsi_dat\n\n\n\n\n\n\n\nparameter\nrhat\nrhat_upper\n\n\n\n\nsd_beta\n1.058\n1.150\n\n\nbeta_spline[1]\n1.045\n1.149\n\n\nsd_s\n1.043\n1.127\n\n\nbeta_spline[2]\n1.018\n1.062\n\n\nbeta_spline[7]\n1.014\n1.028\n\n\nbeta_spline[5]\n1.010\n1.026\n\n\nbeta_spline[6]\n1.009\n1.020\n\n\nbeta[1]\n1.009\n1.033\n\n\nbeta_spline[3]\n1.009\n1.017\n\n\nbeta_spline[4]\n1.007\n1.017\n\n\nbeta[2]\n1.007\n1.025\n\n\nbeta[7]\n1.006\n1.020\n\n\nalpha[1]\n1.006\n1.018\n\n\nbeta[4]\n1.004\n1.013\n\n\nbeta_snow[3]\n1.004\n1.012\n\n\nbeta_snow[2]\n1.004\n1.013\n\n\nsd_beta_s\n1.003\n1.009\n\n\nbeta_snow[4]\n1.002\n1.008\n\n\nbeta[3]\n1.002\n1.008\n\n\nbeta_snow[5]\n1.002\n1.006\n\n\nbeta_snow[1]\n1.002\n1.004\n\n\nbeta_snow[6]\n1.002\n1.004\n\n\nbeta[5]\n1.002\n1.004\n\n\nbeta_snow[7]\n1.001\n1.002\n\n\nalpha[2]\n1.000\n1.001\n\n\nbeta[6]\n1.000\n1.000\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ncomponent\ncov\nterm\nmean\nmedian\nmode\nlow\nhigh\nn\nn_eff\np_rope\nrope_range\nrhat\nrhat_upper\n\n\n\n\ndetection\nalpha_int\nalpha[1]\n-3.493\n-3.480\n-3.488\n-3.892\n-3.017\n15000\n476.299\n0.000\n0.18\n1.006\n1.018\n\n\ndetection\nlureDays\nalpha[2]\n-0.397\n-0.392\n-0.395\n-0.689\n-0.091\n15000\n1541.305\n0.123\n0.18\n1.000\n1.001\n\n\noccupancy\nbeta.int\nbeta[1]\n-1.285\n-1.275\n-1.261\n-1.977\n-0.642\n15000\n574.728\n0.002\n0.18\n1.009\n1.033\n\n\noccupancy\nyr2019\nbeta[2]\n-0.070\n-0.067\n-0.132\n-1.217\n1.073\n15000\n1311.882\n0.198\n0.18\n1.007\n1.025\n\n\noccupancy\nyr2021\nbeta[3]\n-1.334\n-1.325\n-1.321\n-2.292\n-0.306\n15000\n1177.765\n0.025\n0.18\n1.002\n1.008\n\n\noccupancy\nyr2022\nbeta[4]\n-0.967\n-0.973\n-1.028\n-1.940\n0.108\n15000\n1248.680\n0.074\n0.18\n1.004\n1.013\n\n\noccupancy\nyr2023\nbeta[5]\n-0.623\n-0.622\n-0.529\n-1.578\n0.363\n15000\n1291.190\n0.144\n0.18\n1.002\n1.004\n\n\noccupancy\nyr2024\nbeta[6]\n0.433\n0.417\n0.512\n-0.596\n1.464\n15000\n759.305\n0.187\n0.18\n1.000\n1.000\n\n\noccupancy\nelev_m\nbeta[7]\n0.806\n0.792\n0.776\n0.198\n1.328\n15000\n991.843\n0.030\n0.18\n1.006\n1.020\n\n\noccupancy\nbeta_snow[1]\nbeta_snow[1]\n0.751\n0.770\n0.717\n-0.705\n2.023\n15000\n623.591\nNA\nNA\n1.002\n1.004\n\n\noccupancy\nbeta_snow[2]\nbeta_snow[2]\n-0.752\n-0.756\n-0.672\n-2.105\n0.598\n15000\n552.730\nNA\nNA\n1.004\n1.013\n\n\noccupancy\nbeta_snow[3]\nbeta_snow[3]\n-2.575\n-2.580\n-2.564\n-5.074\n-0.214\n15000\n569.217\nNA\nNA\n1.004\n1.012\n\n\noccupancy\nbeta_snow[4]\nbeta_snow[4]\n-4.499\n-4.472\n-4.208\n-8.140\n-1.039\n15000\n632.338\nNA\nNA\n1.002\n1.008\n\n\noccupancy\nbeta_snow[5]\nbeta_snow[5]\n-6.357\n-6.311\n-5.737\n-11.271\n-1.477\n15000\n654.221\nNA\nNA\n1.002\n1.006\n\n\noccupancy\nbeta_snow[6]\nbeta_snow[6]\n-7.959\n-7.939\n-7.120\n-14.057\n-1.102\n15000\n694.430\nNA\nNA\n1.002\n1.004\n\n\noccupancy\nbeta_snow[7]\nbeta_snow[7]\n-9.462\n-9.400\n-8.238\n-17.707\n-1.348\n15000\n731.968\nNA\nNA\n1.001\n1.002\n\n\noccupancy\nbeta_snow_1\nbeta_snow_1\n0.751\n0.770\n0.717\n-0.705\n2.023\n15000\n623.591\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_2\nbeta_snow_2\n-0.752\n-0.756\n-0.672\n-2.105\n0.598\n15000\n552.730\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[1]\nbeta_snow_raw[1]\n-0.349\n-0.384\n-0.268\n-2.044\n0.998\n15000\n608.347\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[2]\nbeta_snow_raw[2]\n-0.102\n-0.116\n-0.085\n-1.419\n1.528\n15000\n506.130\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[3]\nbeta_snow_raw[3]\n0.085\n0.094\n0.131\n-1.337\n1.490\n15000\n604.263\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[4]\nbeta_snow_raw[4]\n0.266\n0.289\n0.552\n-1.344\n1.826\n15000\n526.659\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_snow_raw[5]\nbeta_snow_raw[5]\n0.103\n0.091\n0.257\n-1.746\n1.504\n15000\n435.849\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline[1]\nbeta_spline[1]\n0.003\n-0.011\n0.016\n-1.365\n1.208\n15000\n265.816\nNA\nNA\n1.045\n1.149\n\n\noccupancy\nbeta_spline[2]\nbeta_spline[2]\n-0.015\n-0.029\n-0.118\n-1.264\n1.141\n15000\n333.962\nNA\nNA\n1.018\n1.062\n\n\noccupancy\nbeta_spline[3]\nbeta_spline[3]\n0.011\n0.037\n-0.128\n-1.451\n1.465\n15000\n337.804\nNA\nNA\n1.009\n1.017\n\n\noccupancy\nbeta_spline[4]\nbeta_spline[4]\n0.143\n0.159\n0.287\n-1.343\n1.590\n15000\n409.781\nNA\nNA\n1.007\n1.017\n\n\noccupancy\nbeta_spline[5]\nbeta_spline[5]\n0.277\n0.287\n0.369\n-1.290\n1.785\n15000\n418.548\nNA\nNA\n1.010\n1.026\n\n\noccupancy\nbeta_spline[6]\nbeta_spline[6]\n0.097\n0.137\n0.286\n-1.657\n1.851\n15000\n549.733\nNA\nNA\n1.009\n1.020\n\n\noccupancy\nbeta_spline[7]\nbeta_spline[7]\n-0.118\n-0.001\n-0.061\n-2.533\n2.216\n15000\n435.607\nNA\nNA\n1.014\n1.028\n\n\noccupancy\nbeta_spline_1\nbeta_spline_1\n0.003\n-0.011\n0.016\n-1.365\n1.208\n15000\n265.816\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_2\nbeta_spline_2\n-0.015\n-0.029\n-0.118\n-1.264\n1.141\n15000\n333.962\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[1]\nbeta_spline_raw[1]\n0.117\n0.138\n0.222\n-1.528\n1.544\n15000\n235.812\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[2]\nbeta_spline_raw[2]\n0.141\n0.199\n0.358\n-1.357\n1.579\n15000\n252.238\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[3]\nbeta_spline_raw[3]\n0.005\n0.024\n-0.298\n-1.274\n1.349\n15000\n228.823\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[4]\nbeta_spline_raw[4]\n-0.387\n-0.448\n-0.537\n-1.988\n1.049\n15000\n316.706\nNA\nNA\nNA\nNA\n\n\noccupancy\nbeta_spline_raw[5]\nbeta_spline_raw[5]\n-0.036\n-0.013\n-0.056\n-1.525\n1.680\n15000\n227.184\nNA\nNA\nNA\nNA\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nparam\nn\nn_eff\nmode\nn_mode\np_rope\nci\nhdi_low\nhdi_high\nrope_range\n\n\n\n\nalpha[1]\n15000\n476.299\n-3.488\n1\n0.000\n1\n-4.635\n-2.639\n0.18\n\n\nalpha[2]\n15000\n1541.305\n-0.395\n1\n0.123\n1\n-1.157\n0.307\n0.18\n\n\nbeta[1]\n15000\n574.728\n-1.261\n1\n0.002\n1\n-2.801\n0.674\n0.18\n\n\nbeta[2]\n15000\n1311.882\n-0.132\n1\n0.198\n1\n-2.610\n2.357\n0.18\n\n\nbeta[3]\n15000\n1177.765\n-1.321\n1\n0.025\n1\n-3.541\n1.351\n0.18\n\n\nbeta[4]\n15000\n1248.680\n-1.028\n1\n0.074\n1\n-3.244\n1.689\n0.18\n\n\nbeta[5]\n15000\n1291.190\n-0.529\n1\n0.144\n1\n-3.041\n1.668\n0.18\n\n\nbeta[6]\n15000\n759.305\n0.512\n1\n0.187\n1\n-1.683\n3.111\n0.18\n\n\nbeta[7]\n15000\n991.843\n0.776\n1\n0.030\n1\n-0.275\n2.412\n0.18\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nyr\nn_reps\nn\nmean\nmedian\nmode\nn_mode\nhdi_lower\nhdi_upper\n\n\n\n\n2018\n668\n10020000\n0.045\n0.036\n0.026\n1\n0.002\n0.082\n\n\n2019\n878\n13170000\n0.042\n0.033\n0.029\n1\n0.000\n0.074\n\n\n2021\n1248\n18720000\n0.043\n0.033\n0.021\n1\n0.001\n0.081\n\n\n2022\n1406\n21090000\n0.040\n0.031\n0.019\n1\n0.001\n0.074\n\n\n2023\n959\n14385000\n0.042\n0.033\n0.021\n1\n0.001\n0.076\n\n\n2024\n1187\n17805000\n0.034\n0.028\n0.022\n1\n0.001\n0.061\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nyr\nn_sites\nn\nmean\nmedian\nmode\nn_mode\nhdi_lower\nhdi_upper\n\n\n\n\n2018\n19\n285000\n0.195\n0.176\n0.118\n1\n0.002\n0.346\n\n\n2019\n32\n480000\n0.112\n0.085\n0.043\n1\n0.002\n0.224\n\n\n2021\n39\n585000\n0.112\n0.094\n0.066\n1\n0.015\n0.205\n\n\n2022\n41\n615000\n0.127\n0.104\n0.067\n1\n0.001\n0.240\n\n\n2023\n30\n450000\n0.201\n0.157\n0.105\n1\n0.017\n0.393\n\n\n2024\n32\n480000\n0.422\n0.408\n0.369\n1\n0.116\n0.710",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>9</span>  <span class='chapter-title'>Model: eval_base_rj_NA_100010000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_04_eval_base_rj_NA_100010000000.html#traceplots",
+    "href": "06_model_04_eval_base_rj_NA_100010000000.html#traceplots",
+    "title": "9  Model: eval_base_rj_NA_100010000000",
+    "section": "9.4 Traceplots",
+    "text": "9.4 Traceplots\n\nab_paramshyper_paramsspline_paramsmu subset: best n_effmu subset: worst n_effs subset: best n_effs subset: worst n_effp subset: best n_effp subset: worst n_effpsi subset: best n_effpsi subset: worst n_eff",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>9</span>  <span class='chapter-title'>Model: eval_base_rj_NA_100010000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_04_eval_base_rj_NA_100010000000.html#relationships",
+    "href": "06_model_04_eval_base_rj_NA_100010000000.html#relationships",
+    "title": "9  Model: eval_base_rj_NA_100010000000",
+    "section": "9.5 Relationships",
+    "text": "9.5 Relationships\n\nlinear relationshipsquadratic relationships\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nNo plots available.",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>9</span>  <span class='chapter-title'>Model: eval_base_rj_NA_100010000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_04_eval_base_rj_NA_100010000000.html#s-random-effect",
+    "href": "06_model_04_eval_base_rj_NA_100010000000.html#s-random-effect",
+    "title": "9  Model: eval_base_rj_NA_100010000000",
+    "section": "9.6 s random effect",
+    "text": "9.6 s random effect\n\ns_random_effect",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>9</span>  <span class='chapter-title'>Model: eval_base_rj_NA_100010000000</span>"
+    ]
+  },
+  {
+    "objectID": "06_model_04_eval_base_rj_NA_100010000000.html#residuals",
+    "href": "06_model_04_eval_base_rj_NA_100010000000.html#residuals",
+    "title": "9  Model: eval_base_rj_NA_100010000000",
+    "section": "9.7 Residuals",
+    "text": "9.7 Residuals\n\ndharma_residuals_occupancydharma_residuals_detectiondurbin_watson_detectionmoran_occupancymoran_detection",
+    "crumbs": [
+      "Models",
+      "<span class='chapter-number'>9</span>  <span class='chapter-title'>Model: eval_base_rj_NA_100010000000</span>"
+    ]
+  },
+  {
+    "objectID": "99_appendix.html",
+    "href": "99_appendix.html",
+    "title": "10  Appendix",
+    "section": "",
+    "text": "10.1 Square Term Map\ncomponent\nab\nbase_cov\nlinear_only_cov\nlinear_only_coef\nlinear_only_switch\nlinear_quad_cov\nlinear_quad_coef\nsq_cov\nsq_coef\nsq_switch\n\n\n\n\ndetection\nalpha\nlureDays\nlureDays\nalpha_rev[1]\nalpha.switch[1]\nlureDays\nalpha_lin[1]\nlureDays_sq\nalpha_sq[1]\nalpha.switch_sq[1]\n\n\noccupancy\nbeta\naso_snow_depth\naso_snow_depth\nbeta_rev[2]\nbeta.switch[2]\naso_snow_depth\nbeta_lin[2]\naso_snow_depth_sq\nbeta_sq[2]\nbeta.switch_sq[2]\n\n\noccupancy\nbeta\nelev_m\nelev_m\nbeta_rev[1]\nbeta.switch[1]\nelev_m\nbeta_lin[1]\nelev_m_sq\nbeta_sq[1]\nbeta.switch_sq[1]\n\n\noccupancy\nbeta\nslope\nslope\nbeta_rev[3]\nbeta.switch[3]\nslope\nbeta_lin[3]\nslope_sq\nbeta_sq[3]\nbeta.switch_sq[3]",
+    "crumbs": [
+      "<span class='chapter-number'>10</span>  <span class='chapter-title'>Appendix</span>"
+    ]
+  }
+]
