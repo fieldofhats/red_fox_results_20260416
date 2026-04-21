@@ -192,11 +192,14 @@ ul.task-list li input[type="checkbox"] {
    
   <ul>
   <li><a href="#grouped-inclusion-summary" id="toc-grouped-inclusion-summary" class="nav-link active" data-scroll-target="#grouped-inclusion-summary"><span class="header-section-number">4.1</span> Grouped Inclusion Summary</a></li>
-  <li><a href="#square-term-map" id="toc-square-term-map" class="nav-link" data-scroll-target="#square-term-map"><span class="header-section-number">4.2</span> Square Term Map</a></li>
-  <li><a href="#top-models" id="toc-top-models" class="nav-link" data-scroll-target="#top-models"><span class="header-section-number">4.3</span> Top Models</a></li>
-  <li><a href="#cumulative-posterior-mass" id="toc-cumulative-posterior-mass" class="nav-link" data-scroll-target="#cumulative-posterior-mass"><span class="header-section-number">4.4</span> Cumulative Posterior Mass</a></li>
-  <li><a href="#waic-competition" id="toc-waic-competition" class="nav-link" data-scroll-target="#waic-competition"><span class="header-section-number">4.5</span> WAIC Competition</a></li>
-  <li><a href="#rope-summary" id="toc-rope-summary" class="nav-link" data-scroll-target="#rope-summary"><span class="header-section-number">4.6</span> ROPE Summary</a></li>
+  <li><a href="#quick-inclusion-ranking" id="toc-quick-inclusion-ranking" class="nav-link" data-scroll-target="#quick-inclusion-ranking"><span class="header-section-number">4.2</span> Quick Inclusion Ranking</a></li>
+  <li><a href="#square-term-map" id="toc-square-term-map" class="nav-link" data-scroll-target="#square-term-map"><span class="header-section-number">4.3</span> Square Term Map</a></li>
+  <li><a href="#square-term-summary" id="toc-square-term-summary" class="nav-link" data-scroll-target="#square-term-summary"><span class="header-section-number">4.4</span> Square-term summary</a></li>
+  <li><a href="#top-models" id="toc-top-models" class="nav-link" data-scroll-target="#top-models"><span class="header-section-number">4.5</span> Top Models</a></li>
+  <li><a href="#cumulative-posterior-mass" id="toc-cumulative-posterior-mass" class="nav-link" data-scroll-target="#cumulative-posterior-mass"><span class="header-section-number">4.6</span> Cumulative Posterior Mass</a></li>
+  <li><a href="#waic-competition" id="toc-waic-competition" class="nav-link" data-scroll-target="#waic-competition"><span class="header-section-number">4.7</span> WAIC Competition</a></li>
+  <li><a href="#rope-summary" id="toc-rope-summary" class="nav-link" data-scroll-target="#rope-summary"><span class="header-section-number">4.8</span> ROPE Summary</a></li>
+  <li><a href="#curve-comparison-plots" id="toc-curve-comparison-plots" class="nav-link" data-scroll-target="#curve-comparison-plots"><span class="header-section-number">4.9</span> Curve Comparison Plots</a></li>
   </ul>
 </nav>
     </div>
@@ -319,8 +322,131 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 </section>
-<section id="square-term-map" class="level2" data-number="4.2">
-<h2 data-number="4.2" class="anchored" data-anchor-id="square-term-map"><span class="header-section-number">4.2</span> Square Term Map</h2>
+<section id="quick-inclusion-ranking" class="level2" data-number="4.2">
+<h2 data-number="4.2" class="anchored" data-anchor-id="quick-inclusion-ranking"><span class="header-section-number">4.2</span> Quick Inclusion Ranking</h2>
+<div class="cell">
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 21%">
+<col style="width: 17%">
+<col style="width: 6%">
+<col style="width: 13%">
+<col style="width: 6%">
+<col style="width: 10%">
+<col style="width: 9%">
+<col style="width: 7%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">mean</th>
+<th style="text-align: left;">parameter</th>
+<th style="text-align: left;">cov</th>
+<th style="text-align: left;">ab</th>
+<th style="text-align: left;">form</th>
+<th style="text-align: right;">.ftop</th>
+<th style="text-align: right;">n_models</th>
+<th style="text-align: right;">lin_est</th>
+<th style="text-align: right;">sq_est</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">0.437</td>
+<td style="text-align: left;">beta.switch[1]</td>
+<td style="text-align: left;">elev_m</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">linear_only</td>
+<td style="text-align: right;">0.437</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">1.380</td>
+<td style="text-align: right;">-0.673</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0.378</td>
+<td style="text-align: left;">beta.switch_sq[2]</td>
+<td style="text-align: left;">aso_snow_depth</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">quadratic</td>
+<td style="text-align: right;">0.378</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">-1.133</td>
+<td style="text-align: right;">-1.402</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">0.363</td>
+<td style="text-align: left;">alpha.switch[1]</td>
+<td style="text-align: left;">lureDays</td>
+<td style="text-align: left;">alpha</td>
+<td style="text-align: left;">linear_only</td>
+<td style="text-align: right;">0.363</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">-0.535</td>
+<td style="text-align: right;">-0.567</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0.305</td>
+<td style="text-align: left;">beta.switch[2]</td>
+<td style="text-align: left;">aso_snow_depth</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">linear_only</td>
+<td style="text-align: right;">0.305</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">-1.133</td>
+<td style="text-align: right;">-1.402</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">0.199</td>
+<td style="text-align: left;">beta.switch[3]</td>
+<td style="text-align: left;">slope</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">linear_only</td>
+<td style="text-align: right;">0.199</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">-0.674</td>
+<td style="text-align: right;">-0.148</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0.196</td>
+<td style="text-align: left;">alpha.switch_sq[1]</td>
+<td style="text-align: left;">lureDays</td>
+<td style="text-align: left;">alpha</td>
+<td style="text-align: left;">quadratic</td>
+<td style="text-align: right;">0.196</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">-0.535</td>
+<td style="text-align: right;">-0.567</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">0.186</td>
+<td style="text-align: left;">beta.switch_sq[1]</td>
+<td style="text-align: left;">elev_m</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">quadratic</td>
+<td style="text-align: right;">0.186</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">1.380</td>
+<td style="text-align: right;">-0.673</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0.021</td>
+<td style="text-align: left;">beta.switch_sq[3]</td>
+<td style="text-align: left;">slope</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">quadratic</td>
+<td style="text-align: right;">0.021</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">-0.674</td>
+<td style="text-align: right;">-0.148</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+<section id="square-term-map" class="level2" data-number="4.3">
+<h2 data-number="4.3" class="anchored" data-anchor-id="square-term-map"><span class="header-section-number">4.3</span> Square Term Map</h2>
 <div class="cell">
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
@@ -410,8 +536,261 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 </section>
-<section id="top-models" class="level2" data-number="4.3">
-<h2 data-number="4.3" class="anchored" data-anchor-id="top-models"><span class="header-section-number">4.3</span> Top Models</h2>
+<section id="square-term-summary" class="level2" data-number="4.4">
+<h2 data-number="4.4" class="anchored" data-anchor-id="square-term-summary"><span class="header-section-number">4.4</span> Square-term summary</h2>
+<div class="cell">
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 9%">
+<col style="width: 11%">
+<col style="width: 5%">
+<col style="width: 5%">
+<col style="width: 4%">
+<col style="width: 6%">
+<col style="width: 5%">
+<col style="width: 7%">
+<col style="width: 7%">
+<col style="width: 7%">
+<col style="width: 4%">
+<col style="width: 13%">
+<col style="width: 12%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">param</th>
+<th style="text-align: left;">cov</th>
+<th style="text-align: right;">mean</th>
+<th style="text-align: right;">median</th>
+<th style="text-align: right;">n</th>
+<th style="text-align: right;">n_eff</th>
+<th style="text-align: right;">mode</th>
+<th style="text-align: right;">hdi_lower</th>
+<th style="text-align: right;">hdi_upper</th>
+<th style="text-align: left;">component</th>
+<th style="text-align: left;">ab</th>
+<th style="text-align: left;">switch</th>
+<th style="text-align: left;">form</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">alpha_no[1]</td>
+<td style="text-align: left;">alpha_int</td>
+<td style="text-align: right;">-4.006</td>
+<td style="text-align: right;">-3.930</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">921.266</td>
+<td style="text-align: right;">-3.759</td>
+<td style="text-align: right;">-4.955</td>
+<td style="text-align: right;">-3.142</td>
+<td style="text-align: left;">detection</td>
+<td style="text-align: left;">alpha</td>
+<td style="text-align: left;">NA</td>
+<td style="text-align: left;">intercept</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">beta_no[1]</td>
+<td style="text-align: left;">beta.int</td>
+<td style="text-align: right;">-0.877</td>
+<td style="text-align: right;">-0.893</td>
+<td style="text-align: right;">81923</td>
+<td style="text-align: right;">1165.146</td>
+<td style="text-align: right;">-0.948</td>
+<td style="text-align: right;">-2.243</td>
+<td style="text-align: right;">0.381</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">NA</td>
+<td style="text-align: left;">intercept</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">alpha_rev[1]</td>
+<td style="text-align: left;">lureDays</td>
+<td style="text-align: right;">-0.535</td>
+<td style="text-align: right;">-0.530</td>
+<td style="text-align: right;">29757</td>
+<td style="text-align: right;">2789.191</td>
+<td style="text-align: right;">-0.533</td>
+<td style="text-align: right;">-0.885</td>
+<td style="text-align: right;">-0.192</td>
+<td style="text-align: left;">detection</td>
+<td style="text-align: left;">alpha</td>
+<td style="text-align: left;">alpha.switch[1]</td>
+<td style="text-align: left;">linear_only</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">beta_rev[2]</td>
+<td style="text-align: left;">aso_snow_depth</td>
+<td style="text-align: right;">-1.133</td>
+<td style="text-align: right;">-1.102</td>
+<td style="text-align: right;">25014</td>
+<td style="text-align: right;">1414.762</td>
+<td style="text-align: right;">-1.187</td>
+<td style="text-align: right;">-1.914</td>
+<td style="text-align: right;">-0.261</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">beta.switch[2]</td>
+<td style="text-align: left;">linear_only</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">beta_rev[1]</td>
+<td style="text-align: left;">elev_m</td>
+<td style="text-align: right;">1.380</td>
+<td style="text-align: right;">1.321</td>
+<td style="text-align: right;">35764</td>
+<td style="text-align: right;">1529.286</td>
+<td style="text-align: right;">1.115</td>
+<td style="text-align: right;">0.349</td>
+<td style="text-align: right;">2.392</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">beta.switch[1]</td>
+<td style="text-align: left;">linear_only</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">beta_rev[3]</td>
+<td style="text-align: left;">slope</td>
+<td style="text-align: right;">-0.674</td>
+<td style="text-align: right;">-0.654</td>
+<td style="text-align: right;">16318</td>
+<td style="text-align: right;">1826.847</td>
+<td style="text-align: right;">-0.548</td>
+<td style="text-align: right;">-1.314</td>
+<td style="text-align: right;">-0.017</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">beta.switch[3]</td>
+<td style="text-align: left;">linear_only</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">alpha_lin[1]</td>
+<td style="text-align: left;">lureDays</td>
+<td style="text-align: right;">-0.290</td>
+<td style="text-align: right;">-0.289</td>
+<td style="text-align: right;">16096</td>
+<td style="text-align: right;">743.014</td>
+<td style="text-align: right;">-0.267</td>
+<td style="text-align: right;">-0.727</td>
+<td style="text-align: right;">0.165</td>
+<td style="text-align: left;">detection</td>
+<td style="text-align: left;">alpha</td>
+<td style="text-align: left;">alpha.switch_sq[1]</td>
+<td style="text-align: left;">quadratic_linear</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">beta_lin[2]</td>
+<td style="text-align: left;">aso_snow_depth</td>
+<td style="text-align: right;">-1.947</td>
+<td style="text-align: right;">-1.864</td>
+<td style="text-align: right;">30932</td>
+<td style="text-align: right;">300.396</td>
+<td style="text-align: right;">-1.736</td>
+<td style="text-align: right;">-3.273</td>
+<td style="text-align: right;">-0.570</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">beta.switch_sq[2]</td>
+<td style="text-align: left;">quadratic_linear</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">beta_lin[1]</td>
+<td style="text-align: left;">elev_m</td>
+<td style="text-align: right;">1.737</td>
+<td style="text-align: right;">1.686</td>
+<td style="text-align: right;">15274</td>
+<td style="text-align: right;">585.203</td>
+<td style="text-align: right;">1.450</td>
+<td style="text-align: right;">0.621</td>
+<td style="text-align: right;">2.900</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">beta.switch_sq[1]</td>
+<td style="text-align: left;">quadratic_linear</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">beta_lin[3]</td>
+<td style="text-align: left;">slope</td>
+<td style="text-align: right;">-0.614</td>
+<td style="text-align: right;">-0.607</td>
+<td style="text-align: right;">1714</td>
+<td style="text-align: right;">343.919</td>
+<td style="text-align: right;">-0.531</td>
+<td style="text-align: right;">-1.258</td>
+<td style="text-align: right;">0.039</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">beta.switch_sq[3]</td>
+<td style="text-align: left;">quadratic_linear</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">alpha_sq[1]</td>
+<td style="text-align: left;">lureDays</td>
+<td style="text-align: right;">-0.567</td>
+<td style="text-align: right;">-0.526</td>
+<td style="text-align: right;">16096</td>
+<td style="text-align: right;">119.700</td>
+<td style="text-align: right;">-0.400</td>
+<td style="text-align: right;">-1.129</td>
+<td style="text-align: right;">-0.114</td>
+<td style="text-align: left;">detection</td>
+<td style="text-align: left;">alpha</td>
+<td style="text-align: left;">alpha.switch_sq[1]</td>
+<td style="text-align: left;">quadratic_square</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">beta_sq[2]</td>
+<td style="text-align: left;">aso_snow_depth</td>
+<td style="text-align: right;">-1.402</td>
+<td style="text-align: right;">-1.300</td>
+<td style="text-align: right;">30932</td>
+<td style="text-align: right;">112.018</td>
+<td style="text-align: right;">-2.047</td>
+<td style="text-align: right;">-2.449</td>
+<td style="text-align: right;">-0.140</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">beta.switch_sq[2]</td>
+<td style="text-align: left;">quadratic_square</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">beta_sq[1]</td>
+<td style="text-align: left;">elev_m</td>
+<td style="text-align: right;">-0.673</td>
+<td style="text-align: right;">-0.626</td>
+<td style="text-align: right;">15274</td>
+<td style="text-align: right;">166.733</td>
+<td style="text-align: right;">-0.508</td>
+<td style="text-align: right;">-1.411</td>
+<td style="text-align: right;">0.170</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">beta.switch_sq[1]</td>
+<td style="text-align: left;">quadratic_square</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">beta_sq[3]</td>
+<td style="text-align: left;">slope</td>
+<td style="text-align: right;">-0.148</td>
+<td style="text-align: right;">-0.116</td>
+<td style="text-align: right;">1714</td>
+<td style="text-align: right;">193.856</td>
+<td style="text-align: right;">-0.022</td>
+<td style="text-align: right;">-0.611</td>
+<td style="text-align: right;">0.424</td>
+<td style="text-align: left;">occupancy</td>
+<td style="text-align: left;">beta</td>
+<td style="text-align: left;">beta.switch_sq[3]</td>
+<td style="text-align: left;">quadratic_square</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+<section id="top-models" class="level2" data-number="4.5">
+<h2 data-number="4.5" class="anchored" data-anchor-id="top-models"><span class="header-section-number">4.5</span> Top Models</h2>
 <div class="cell">
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
@@ -731,8 +1110,8 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 </section>
-<section id="cumulative-posterior-mass" class="level2" data-number="4.4">
-<h2 data-number="4.4" class="anchored" data-anchor-id="cumulative-posterior-mass"><span class="header-section-number">4.4</span> Cumulative Posterior Mass</h2>
+<section id="cumulative-posterior-mass" class="level2" data-number="4.6">
+<h2 data-number="4.6" class="anchored" data-anchor-id="cumulative-posterior-mass"><span class="header-section-number">4.6</span> Cumulative Posterior Mass</h2>
 <div class="cell">
 <div class="cell-output-display">
 <div>
@@ -743,8 +1122,8 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 </section>
-<section id="waic-competition" class="level2" data-number="4.5">
-<h2 data-number="4.5" class="anchored" data-anchor-id="waic-competition"><span class="header-section-number">4.5</span> WAIC Competition</h2>
+<section id="waic-competition" class="level2" data-number="4.7">
+<h2 data-number="4.7" class="anchored" data-anchor-id="waic-competition"><span class="header-section-number">4.7</span> WAIC Competition</h2>
 <div class="cell">
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
@@ -1130,8 +1509,8 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 </section>
-<section id="rope-summary" class="level2" data-number="4.6">
-<h2 data-number="4.6" class="anchored" data-anchor-id="rope-summary"><span class="header-section-number">4.6</span> ROPE Summary</h2>
+<section id="rope-summary" class="level2" data-number="4.8">
+<h2 data-number="4.8" class="anchored" data-anchor-id="rope-summary"><span class="header-section-number">4.8</span> ROPE Summary</h2>
 <div class="cell">
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
@@ -1146,6 +1525,30 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 </tbody>
 </table>
+</div>
+</div>
+</section>
+<section id="curve-comparison-plots" class="level2" data-number="4.9">
+<h2 data-number="4.9" class="anchored" data-anchor-id="curve-comparison-plots"><span class="header-section-number">4.9</span> Curve Comparison Plots</h2>
+<div class="tabset-margin-container"></div><div class="panel-tabset">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-1-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-1" role="tab" aria-controls="tabset-1-1" aria-selected="true" href="">detection: lureDays</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-2" role="tab" aria-controls="tabset-1-2" aria-selected="false" href="">occupancy: aso snow depth</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-3" role="tab" aria-controls="tabset-1-3" aria-selected="false" href="">occupancy: elev m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-4-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-4" role="tab" aria-controls="tabset-1-4" aria-selected="false" href="">occupancy: slope</a></li></ul>
+<div class="tab-content">
+<div id="tabset-1-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-1-1-tab">
+<p><img src="figs/sq_rj_curve_comparisons_idx_1.png" class="img-fluid"></p>
+<p>p_any_effect = 0.363 | p_linear_only = 0.363 | p_quadratic = 0.196</p>
+</div>
+<div id="tabset-1-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-1-2-tab">
+<p><img src="figs/sq_rj_curve_comparisons_idx_2.png" class="img-fluid"></p>
+<p>p_any_effect = 0.378 | p_linear_only = 0.305 | p_quadratic = 0.378</p>
+</div>
+<div id="tabset-1-3" class="tab-pane" role="tabpanel" aria-labelledby="tabset-1-3-tab">
+<p><img src="figs/sq_rj_curve_comparisons_idx_3.png" class="img-fluid"></p>
+<p>p_any_effect = 0.437 | p_linear_only = 0.437 | p_quadratic = 0.186</p>
+</div>
+<div id="tabset-1-4" class="tab-pane" role="tabpanel" aria-labelledby="tabset-1-4-tab">
+<p><img src="figs/sq_rj_curve_comparisons_idx_4.png" class="img-fluid"></p>
+<p>p_any_effect = 0.199 | p_linear_only = 0.199 | p_quadratic = 0.021</p>
+</div>
 </div>
 </div>
 
